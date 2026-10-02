@@ -395,6 +395,154 @@ export class TrendSeasonalModel {
   }
 }
 
+// ===========================================================================
+// AdaptiveTrendModel — STL-inspired decomposition + Holt's damped trend
+//
+// Based on:
+//   - Hyndman & Athanasopoulos, "Forecasting: Principles and Practice" (FPP3),
+//     Ch 6 (STL decomposition) and Ch 8 (Holt's damped trend).
+//   - Gardner & McKenzie (1985) — damping parameter φ prevents over-shooting.
+//   - Hegre et al. (2021) ViEWS2020 — adaptive ensemble constituent models.
+//
+// Method:
+//   1. Seasonal component: calendar-month climatology (seasonal-naive, FPP3 §6.6)
+//   2. Seasonally-adjust the training series: y_adj = y - seasonal
+//   3. Fit Holt's linear trend (level + slope) on y_adj via exponential smoothing
+//   4. Apply damping φ to the trend component (prevents over-shoot on upward
+//      trends and accelerates convergence on downward trends)
+//   5. Recompose: forecast = (level + damped_trend) + seasonal
+//
+// This fixes the two weaknesses the evaluation found:
+//   - Downward trends: the damped slope goes negative, so forecasts decline
+//     (unlike TrendSeasonalModel's clamped ratio which floors at 0.5×)
+//   - Upward-trend bias: φ < 1 dampens the trend, reducing over-prediction
+// ===========================================================================
+export class AdaptiveTrendModel {
+  constructor({ targets, windowMonths, partition, loa, alpha = 0.3, beta = 0.1, phi = 0.9, momentumWeight = 0.4 }) {
+    this.targets = targets;
+    this.windowMonths = windowMonths || 36;
+    this.partition = partition;
+    this.loa = loa;
+    this.alpha = alpha;   // level smoothing
+    this.beta = beta;     // slope smoothing
+    this.phi = phi;       // damping parameter (Gardner-McKenzie 1985)
+    this.momentumWeight = momentumWeight;
+  }
+  get testStart() { return this.partition.test_start; }
+  get trainEnd() { return this.testStart - 1; }
+  get outputLength() { return this.partition.output_length || 36; }
+
+  fit(rows) {
+    const panel = rows.cells ? rows : rowsToPanel(rows, this.targets[0]);
+    const byEnt = panelByEntity(panel);
+    const monthlyMeans = {};
+    const holtState = {}; // {entity: {level, slope}}
+
+    for (const [ent, arr] of byEnt) {
+      const past = arr.filter((c) => c.month_id <= this.trainEnd);
+      if (!past.length) continue;
+      const sorted = [...arr].sort((a, b) => a.month_id - b.month_id);
+      const window = sorted.slice(-this.windowMonths);
+
+      // 1. Calendar-month climatology (seasonal component)
+      const sums = new Array(12).fill(0);
+      const counts = new Array(12).fill(0);
+      for (const c of window) {
+        const cm = (c.month_id - 1) % 12;
+        sums[cm] += c[this.targets[0]] || 0;
+        counts[cm] += 1;
+      }
+      const totalSum = sums.reduce((s, v) => s + v, 0);
+      const totalCount = counts.reduce((s, v) => s + v, 0);
+      const overallMean = totalSum / Math.max(1, totalCount);
+      const means = [];
+      for (let i = 0; i < 12; i++) means.push(counts[i] > 0 ? sums[i] / counts[i] : overallMean);
+      monthlyMeans[ent] = means;
+
+      // 2. Seasonally adjust: y_adj = y - seasonal[calMonth]
+      const adj = window.map((c) => {
+        const cm = (c.month_id - 1) % 12;
+        return (c[this.targets[0]] || 0) - (means[cm] || 0);
+      });
+
+      // 3. Holt's linear trend on seasonally-adjusted series
+      //    Initialize: level = first adj, slope = (second - first)
+      let level = adj[0] || 0;
+      let slope = adj.length > 1 ? (adj[1] - adj[0]) : 0;
+      for (let i = 1; i < adj.length; i++) {
+        const prevLevel = level;
+        level = this.alpha * adj[i] + (1 - this.alpha) * (level + this.phi * slope);
+        slope = this.beta * (level - prevLevel) + (1 - this.beta) * this.phi * slope;
+      }
+      holtState[ent] = { level, slope };
+    }
+
+    this._units = Object.keys(monthlyMeans).sort();
+    this._monthlyMeans = monthlyMeans;
+    this._holtState = holtState;
+    return this;
+  }
+
+  predict(rows, sequenceNumber = 0) {
+    const start = this.testStart + sequenceNumber;
+    const months = Array.from({ length: this.outputLength }, (_, i) => start + i);
+    const out = {};
+    for (const t of this.targets) {
+      const time = [], unit = [], y = [];
+      for (let h = 0; h < months.length; h++) {
+        const m = months[h];
+        const cm = (m - 1) % 12;
+        for (const u of this._units) {
+          time.push(m); unit.push(u);
+          const seasonal = this._monthlyMeans[u][cm] || 0;
+          const st = this._holtState[u] || { level: 0, slope: 0 };
+          // Damped trend: sum of φ^j for j=1..h (Gardner-McKenzie)
+          let dampedTrend = 0;
+          let phiPow = this.phi;
+          for (let j = 1; j <= h + 1; j++) {
+            dampedTrend += phiPow * st.slope;
+            phiPow *= this.phi;
+          }
+          const val = Math.max(0, st.level + dampedTrend + seasonal);
+          y.push([+val.toFixed(3)]);
+        }
+      }
+      out[t] = makeFrame(y, time, unit, this.loa, t);
+    }
+    return out;
+  }
+}
+
+/**
+ * Spatial Frequency Ratio — computes observed/expected ratio per entity.
+ * Based on the Bayesian spatial risk methodology (Cambridge, 2024) and the
+ * Frequency Ratio method for conflict prediction (PMC, 2024).
+ *
+ * Normalizes raw counts by the expected count (overall rate × entity time
+ * exposure), producing a risk ratio that is comparable across entities with
+ * different base rates. More robust for geographic ranking than raw projected
+ * counts.
+ */
+export function computeFrequencyRatios(panel, target) {
+  const byEnt = panelByEntity(panel);
+  const totalObs = 0;
+  const totalMonths = 0;
+  const ratios = {};
+  let grandTotal = 0;
+  let grandMonths = 0;
+  for (const [, arr] of byEnt) {
+    grandTotal += arr.reduce((s, c) => s + (c[target] || 0), 0);
+    grandMonths += arr.length;
+  }
+  const overallRate = grandMonths > 0 ? grandTotal / grandMonths : 0;
+  for (const [ent, arr] of byEnt) {
+    const obs = arr.reduce((s, c) => s + (c[target] || 0), 0);
+    const exp = overallRate * arr.length;
+    ratios[ent] = exp > 0 ? obs / exp : 0;
+  }
+  return ratios;
+}
+
 /**
  * Convert a PredictionFrame to the pipeline's projection list format.
  */

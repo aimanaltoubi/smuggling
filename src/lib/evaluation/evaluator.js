@@ -79,8 +79,9 @@ function evaluateStrategic(allIncidents) {
   };
 }
 
-function evaluateTactical(allIncidents, momentumWeight) {
+function evaluateTactical(allIncidents, momentumWeight, modelName) {
   const mw = momentumWeight == null ? 0.4 : momentumWeight;
+  const mn = modelName || "AdaptiveTrendModel";
   const sorted = [...allIncidents].sort((a, b) => new Date(a.incident_date) - new Date(b.incident_date));
   const lastDate = new Date(sorted[sorted.length - 1].incident_date);
   const cutoff = new Date(lastDate.getTime() - 14 * DAY_MS);
@@ -89,7 +90,7 @@ function evaluateTactical(allIncidents, momentumWeight) {
   if (trainData.length < 20 || testData.length === 0) return { error: "بيانات غير كافية" };
 
   let prediction;
-  try { prediction = pipelineTacticalPrediction(trainData, { horizonDays: 14, momentumWeight: mw }); }
+  try { prediction = pipelineTacticalPrediction(trainData, { horizonDays: 14, momentumWeight: mw, model_name: mn }); }
   catch (e) { return { error: e.message }; }
   if (!prediction) return { error: "الأنبوب أعاد null" };
 
@@ -169,11 +170,13 @@ function detectWeaknesses(scenarios) {
 
 function gridSearchMomentumWeight(scenarioData) {
   const weights = [0.0, 0.2, 0.4, 0.6, 0.8];
+  const models = ["AdaptiveTrendModel", "TrendSeasonalModel"];
   const results = [];
+  const modelComparison = {};
   for (const w of weights) {
     let totalAcc = 0, totalDetAcc = 0, count = 0;
     for (const sd of scenarioData) {
-      const tac = evaluateTactical(sd.incidents, w);
+      const tac = evaluateTactical(sd.incidents, w, "AdaptiveTrendModel");
       if (!tac.error) { totalAcc += tac.totalAccuracy; totalDetAcc += tac.detainedAccuracy; count++; }
     }
     results.push({
@@ -182,8 +185,20 @@ function gridSearchMomentumWeight(scenarioData) {
       avgDetainedAccuracy: +(totalDetAcc / Math.max(1, count)).toFixed(1),
     });
   }
+  // Compare models at default weight
+  for (const mn of models) {
+    let totalAcc = 0, totalDetAcc = 0, count = 0;
+    for (const sd of scenarioData) {
+      const tac = evaluateTactical(sd.incidents, 0.4, mn);
+      if (!tac.error) { totalAcc += tac.totalAccuracy; totalDetAcc += tac.detainedAccuracy; count++; }
+    }
+    modelComparison[mn] = {
+      avgAccuracy: +(totalAcc / Math.max(1, count)).toFixed(1),
+      avgDetainedAccuracy: +(totalDetAcc / Math.max(1, count)).toFixed(1),
+    };
+  }
   const best = results.reduce((a, b) => (a.avgAccuracy > b.avgAccuracy ? a : b));
-  return { weights: results, best };
+  return { weights: results, best, modelComparison };
 }
 
 function assessReliability(scenarios, weaknesses) {
@@ -216,8 +231,10 @@ export function runComprehensiveEvaluation() {
     const incidents = generateSyntheticIncidents(scenario.params);
     scenarioData.push({ ...scenario, incidents });
     const strategic = evaluateStrategic(incidents);
-    const tactical = evaluateTactical(incidents, 0.4);
-    scenarioResults.push({ id: scenario.id, name: scenario.name, profile: scenario.profile, strategic, tactical });
+    const tactical = evaluateTactical(incidents, 0.4, "AdaptiveTrendModel");
+    // Also evaluate with old model for comparison
+    const tacticalOld = evaluateTactical(incidents, 0.4, "TrendSeasonalModel");
+    scenarioResults.push({ id: scenario.id, name: scenario.name, profile: scenario.profile, strategic, tactical, tacticalOld });
   }
 
   const weaknesses = detectWeaknesses(scenarioResults);

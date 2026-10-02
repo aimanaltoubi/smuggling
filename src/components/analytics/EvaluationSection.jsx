@@ -6,6 +6,7 @@ import EvaluationVerdict from "./EvaluationVerdict";
 import ScenarioSummary from "./ScenarioSummary";
 import WeaknessPanel from "./WeaknessPanel";
 import FineTuningPanel from "./FineTuningPanel";
+import ModelComparisonPanel from "./ModelComparisonPanel";
 
 function accColor(pct) {
   if (pct >= 80) return "text-green-600 bg-green-50 border-green-200";
@@ -91,6 +92,12 @@ export default function EvaluationSection() {
 
           {/* Phase 4: Fine-tuning */}
           <FineTuningPanel fineTuning={evaluation.fineTuning} reliability={evaluation.reliability} />
+
+          {/* Model comparison (AdaptiveTrendModel vs TrendSeasonalModel) */}
+          <ModelComparisonPanel
+            modelComparison={evaluation.fineTuning.modelComparison}
+            scenarios={evaluation.scenarios}
+          />
 
           {/* Detailed strategic results (first scenario) */}
           {evaluation.scenarios[0] && !evaluation.scenarios[0].tactical.error && (

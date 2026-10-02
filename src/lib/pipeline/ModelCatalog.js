@@ -10,7 +10,7 @@
  * Reference: https://github.com/views-platform/views-models
  */
 
-import { ZeroModel, LocfModel, AverageModel, ConflictologyModel, MixtureBaseline, SeasonalClimatologyModel, TrendSeasonalModel } from "./Baselines";
+import { ZeroModel, LocfModel, AverageModel, ConflictologyModel, MixtureBaseline, SeasonalClimatologyModel, TrendSeasonalModel, AdaptiveTrendModel } from "./Baselines";
 
 export const MODEL_REGISTRY = {
   // --- baselines (views-baseline) — available in-browser ---
@@ -21,6 +21,7 @@ export const MODEL_REGISTRY = {
   MixtureBaseline:             { family: "baseline", available: true,  needsPython: false },
   SeasonalClimatologyModel:     { family: "baseline", available: true,  needsPython: false },
   TrendSeasonalModel:           { family: "baseline", available: true,  needsPython: false },
+  AdaptiveTrendModel:           { family: "baseline", available: true,  needsPython: false },
   ParametricConflictology:     { family: "baseline", available: false, needsPython: true },
   ParametricHurdleConflictology: { family: "baseline", available: false, needsPython: true },
   // --- stepshifters (views-stepshifter) — Python only (Darts/sklearn/lightgbm/xgboost) ---
@@ -77,6 +78,7 @@ export function getModel(name, target, partition, loa = "pgm", hp = {}) {
     case "MixtureBaseline": return new MixtureBaseline({ targets, windowMonths: hp.window_months || 24, lambdaMix: hp.lambda_mix ?? 0.3, nSamples: hp.n_samples || 100, partition, loa, seed: hp.seed || 42 });
     case "SeasonalClimatologyModel": return new SeasonalClimatologyModel({ targets, windowMonths: hp.window_months || 36, partition, loa });
     case "TrendSeasonalModel": return new TrendSeasonalModel({ targets, windowMonths: hp.window_months || 36, partition, loa, momentumWeight: hp.momentum_weight ?? 0.4 });
+    case "AdaptiveTrendModel": return new AdaptiveTrendModel({ targets, windowMonths: hp.window_months || 36, partition, loa, alpha: hp.alpha ?? 0.3, beta: hp.beta ?? 0.1, phi: hp.phi ?? 0.9, momentumWeight: hp.momentum_weight ?? 0.4 });
     default: throw new Error(`Model '${name}' not yet implemented in JS`);
   }
 }
