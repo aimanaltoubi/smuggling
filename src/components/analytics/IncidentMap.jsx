@@ -31,26 +31,67 @@ function cellBoundsFromPrioid(prioid) {
   const south = -90 + (row - 1) * 0.5;
   return { west, south, east: west + 0.5, north: south + 0.5, row, col };
 }
-function buildPrioGrid(incidents) {
-  const cells = {};
+// Entire Oman broken into PRIO-GRID cells; prediction areas highlighted.
+const OMAN_BOUNDS = { latMin: 16.5, latMax: 26.6, lngMin: 51.9, lngMax: 60.0 };
+function buildOmanPrioGrid(incidents, prediction) {
+  // Aggregate incidents per cell
+  const agg = {};
   for (const inc of incidents) {
     if (inc.latitude == null || inc.longitude == null) continue;
     const id = prioidFromLatLng(inc.latitude, inc.longitude);
-    if (!cells[id]) cells[id] = { prioid: id, count: 0, detained: 0, types: {} };
-    const c = cells[id];
+    if (!agg[id]) agg[id] = { prioid: id, count: 0, detained: 0, types: {}, govs: {} };
+    const c = agg[id];
     c.count += 1;
     c.detained += inc.detained_count || 0;
     c.types[inc.incident_type] = (c.types[inc.incident_type] || 0) + 1;
+    if (inc.governorate) c.govs[inc.governorate] = (c.govs[inc.governorate] || 0) + 1;
   }
-  const arr = Object.values(cells);
-  const maxCount = Math.max(1, ...arr.map((c) => c.count));
-  for (const c of arr) {
-    c.bounds = cellBoundsFromPrioid(c.prioid);
-    c.risk = c.count / maxCount;
-    // Heatmap: hue 0 (red), saturation = risk, lightness 0.5, alpha 0.55
-    c.color = Cesium.Color.fromHsl(0.0, c.risk, 0.5, 0.55);
+  // Governorate risk ranking from the prediction model
+  const govRisk = {};
+  if (prediction?.where?.ranking) prediction.where.ranking.forEach((r) => { govRisk[r.governorate] = r.score; });
+  const predictedGov = prediction?.where?.governorate || null;
+  // Peak predicted cell (from prediction coordinates if available)
+  let peakPrioid = null;
+  if (prediction?.where) {
+    const rec = incidents.find((i) => i.governorate === predictedGov);
+    if (rec) peakPrioid = prioidFromLatLng(rec.latitude, rec.longitude);
   }
-  return arr.sort((a, b) => b.risk - a.risk);
+  // Enumerate ALL cells intersecting the Oman bounding box
+  const all = [];
+  const startLng = Math.floor((OMAN_BOUNDS.lngMin + 180) / 0.5) * 0.5 - 180;
+  const startLat = Math.floor((OMAN_BOUNDS.latMin + 90) / 0.5) * 0.5 - 90;
+  for (let lng = startLng; lng < OMAN_BOUNDS.lngMax; lng += 0.5) {
+    for (let lat = startLat; lat < OMAN_BOUNDS.latMax; lat += 0.5) {
+      const id = prioidFromLatLng(lat + 0.001, lng + 0.001);
+      const b = cellBoundsFromPrioid(id);
+      const e = agg[id];
+      const count = e?.count || 0;
+      const detained = e?.detained || 0;
+      let gov = null;
+      if (e && Object.keys(e.govs).length) gov = Object.entries(e.govs).sort((x, y) => y[1] - x[1])[0][0];
+      all.push({
+        prioid: id, bounds: b, count, detained,
+        governorate: gov,
+        govRisk: gov ? govRisk[gov] || 0 : 0,
+        isPredictionArea: gov === predictedGov,
+        isPeak: id === peakPrioid,
+      });
+    }
+  }
+  const maxCount = Math.max(1, ...all.map((c) => c.count));
+  for (const c of all) {
+    c.baseRisk = c.count / maxCount;
+    if (c.isPeak) {
+      c.color = Cesium.Color.fromHsl(0.12, 1.0, 0.5, 0.85); // bright orange peak
+    } else if (c.isPredictionArea) {
+      c.color = Cesium.Color.fromHsl(0.08, 0.85, 0.5, 0.55); // orange highlight
+    } else if (c.count > 0) {
+      c.color = Cesium.Color.fromHsl(0.0, c.baseRisk, 0.5, 0.35 + c.baseRisk * 0.3);
+    } else {
+      c.color = Cesium.Color.fromHsl(0.6, 0.1, 0.5, 0.06); // faint empty cell
+    }
+  }
+  return all;
 }
 
 /* ---------- Named border sectors ---------- */
@@ -117,7 +158,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
     } catch (e) { /* fall back to ellipsoid */ }
   }, []);
 
-  const prioGrid = useMemo(() => (hasData ? buildPrioGrid(incidents) : []), [incidents, hasData]);
+  const prioGrid = useMemo(() => (hasData ? buildOmanPrioGrid(incidents, prediction) : []), [incidents, hasData, prediction]);
   const sectors = useMemo(() => (hasData ? buildBorderSectors(incidents) : []), [incidents, hasData]);
 
   const predCoords = useMemo(() => {
@@ -170,45 +211,53 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
           selectionIndicator={false}
           infoBox
         >
-          {view === "prio" && prioGrid.map((cell) => (
-            <Entity
-              key={cell.prioid}
-              position={Cesium.Cartesian3.fromDegrees((cell.bounds.west + cell.bounds.east) / 2, (cell.bounds.south + cell.bounds.north) / 2)}
-              rectangle={{
-                coordinates: Cesium.Rectangle.fromDegrees(cell.bounds.west, cell.bounds.south, cell.bounds.east, cell.bounds.north),
-                material: cell.color,
-                classificationType: Cesium.ClassificationType.TERRAIN,
-                outline: true,
-                outlineColor: Cesium.Color.WHITE.withAlpha(0.25),
-                outlineWidth: 1,
-              }}
-              label={{
-                text: `${cell.prioid}\n${cell.count}`,
-                font: "12px sans-serif",
-                fillColor: Cesium.Color.WHITE,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 2,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                showBackground: true,
-                backgroundColor: Cesium.Color.fromCssColorString("rgba(0,0,0,0.5)"),
-                backgroundPadding: new Cesium.Cartesian2(6, 5),
-                verticalOrigin: Cesium.VerticalOrigin.CENTER,
-                horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-                scale: 0.8,
-              }}
-              description={`
-                <div dir="rtl" style="text-align:right;font-family:sans-serif">
-                  <strong>PRIO-GRID ${cell.prioid}</strong><br/>
-                  الخطر: ${(cell.risk * 100).toFixed(0)}%<br/>
-                  الحوادث: ${cell.count}<br/>
-                  المعتقلون: ${cell.detained}<br/>
-                  النطاق: ${cell.bounds.south.toFixed(1)}-${cell.bounds.north.toFixed(1)} خط عرض، ${cell.bounds.west.toFixed(1)}-${cell.bounds.east.toFixed(1)} طول<br/>
-                  ${Object.entries(cell.types).map(([t, n]) => `${t}: ${n}`).join(" | ")}
-                </div>
-              `}
-            />
-          ))}
+          {view === "prio" && prioGrid.map((cell) => {
+            const active = cell.count > 0 || cell.isPredictionArea;
+            return (
+              <Entity
+                key={cell.prioid}
+                position={Cesium.Cartesian3.fromDegrees((cell.bounds.west + cell.bounds.east) / 2, (cell.bounds.south + cell.bounds.north) / 2)}
+                rectangle={{
+                  coordinates: Cesium.Rectangle.fromDegrees(cell.bounds.west, cell.bounds.south, cell.bounds.east, cell.bounds.north),
+                  material: cell.color,
+                  classificationType: Cesium.ClassificationType.TERRAIN,
+                  outline: active,
+                  outlineColor: cell.isPeak
+                    ? Cesium.Color.WHITE
+                    : cell.isPredictionArea
+                      ? Cesium.Color.ORANGE
+                      : Cesium.Color.WHITE.withAlpha(0.2),
+                  outlineWidth: cell.isPeak ? 2 : 1,
+                }}
+                label={active ? {
+                  text: cell.isPeak ? `★ ${cell.prioid}` : `${cell.prioid}\n${cell.count}`,
+                  font: "12px sans-serif",
+                  fillColor: Cesium.Color.WHITE,
+                  outlineColor: Cesium.Color.BLACK,
+                  outlineWidth: 2,
+                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                  showBackground: true,
+                  backgroundColor: Cesium.Color.fromCssColorString(cell.isPeak ? "rgba(180,83,9,0.85)" : "rgba(0,0,0,0.5)"),
+                  backgroundPadding: new Cesium.Cartesian2(6, 5),
+                  verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                  horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                  heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                  scale: cell.isPeak ? 0.95 : 0.75,
+                } : undefined}
+                description={`
+                  <div dir="rtl" style="text-align:right;font-family:sans-serif">
+                    <strong>PRIO-GRID ${cell.prioid}</strong>${cell.isPeak ? " ★ ذروة التنبؤ" : ""}<br/>
+                    ${cell.isPredictionArea ? "منطقة تنبؤ محتملة<br/>" : ""}
+                    الخطر: ${(cell.baseRisk * 100).toFixed(0)}%${cell.govRisk ? ` | مخاطر المحافظة: ${(cell.govRisk * 100).toFixed(0)}%` : ""}<br/>
+                    الحوادث: ${cell.count}<br/>
+                    المعتقلون: ${cell.detained}<br/>
+                    المحافظة: ${cell.governorate || "غير محدد"}<br/>
+                    النطاق: ${cell.bounds.south.toFixed(1)}-${cell.bounds.north.toFixed(1)} خط عرض، ${cell.bounds.west.toFixed(1)}-${cell.bounds.east.toFixed(1)} طول
+                  </div>
+                `}
+              />
+            );
+          })}
 
           {view === "sectors" && sectors.map((s) => (
             <Entity
@@ -293,7 +342,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
 
       {view === "prio" && prioGrid.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          PRIO-GRID معياري (0.5° × 0.5°) — {prioGrid.length} خلية نشطة ملوّنة حسب المخاطر ومسقطة على تضاريس ثلاثية الأبعاد. أعلى خلية: PRIO-{prioGrid[0].prioid} ({prioGrid[0].count} حادث).
+          PRIO-GRID معياري (0.5° × 0.5°) يغطي سلطنة عمان بالكامل — {prioGrid.length} خلية. الخلايا الفاتحة بلا حوادث، الحمراء حسب الكثافة، والبرتقالية هي مناطق التنبؤ المحتملة (★ ذروة التنبؤ).
         </p>
       )}
       {view === "sectors" && sectors.length > 0 && (
