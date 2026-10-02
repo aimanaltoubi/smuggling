@@ -183,8 +183,8 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">
           <button onClick={() => setView("prio")} className={btn(view === "prio")}>خريطة المخاطر</button>
-          <button onClick={() => setView("sectors")} className={btn(view === "sectors")}>قطاعات الحدود</button>
-          <button onClick={() => setView("points")} className={btn(view === "points")}>نقاط الحوادث</button>
+          <button onClick={() => setView("sectors")} className={btn(view === "sectors")}>مناطق الحدود</button>
+          <button onClick={() => setView("points")} className={btn(view === "points")}>مواقع الحوادث</button>
         </div>
         {view === "prio" && prioGrid.length > 0 && (
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -247,7 +247,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                   outlineWidth: cell.isPeak ? 2 : 1,
                 }}
                 label={active ? {
-                  text: cell.isPeak ? `★ ${cell.governorate || "منطقة التنبؤ"}` : `${cell.governorate || "منطقة"}\n${cell.count} حادث`,
+                  text: cell.isPeak ? `★ ${cell.governorate || "منطقة التنبؤ"}` : `${cell.governorate || "منطقة"} — ${cell.count} حادث`,
                   font: "12px sans-serif",
                   fillColor: Cesium.Color.WHITE,
                   outlineColor: Cesium.Color.BLACK,
@@ -288,7 +288,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                 outlineWidth: 1,
               }}
               label={{
-                text: `${s.name}\n${s.count} حادث`,
+                text: `${s.name} — ${s.count} حادث`,
                 font: "14px sans-serif",
                 fillColor: Cesium.Color.WHITE,
                 outlineColor: Cesium.Color.BLACK,
