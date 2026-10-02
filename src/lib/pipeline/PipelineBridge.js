@@ -62,7 +62,7 @@ function aggregateByMonth(projections) {
  * projection with confidence intervals.
  */
 export function pipelineStrategicForecast(incidents, opts = {}) {
-  const { target = "incidents", level = "governorate", horizon = 48, model_name = "AverageModel" } = opts;
+  const { target = "incidents", level = "governorate", horizon = 48, model_name = "SeasonalClimatologyModel" } = opts;
   const pipelineTarget = target === "detained" ? "detained_count" : "incidents";
 
   const result = runPipeline(incidents, {
@@ -90,7 +90,7 @@ export function pipelineStrategicForecast(incidents, opts = {}) {
  * in the shape PredictionSection and IncidentMap expect.
  */
 export function pipelineTacticalPrediction(incidents, opts = {}) {
-  const { horizonDays = 14, model_name = "AverageModel" } = opts;
+  const { horizonDays = 14, model_name = "SeasonalClimatologyModel" } = opts;
 
   const incResult = runPipeline(incidents, { model_name, target: "incidents", level: "governorate", horizon_months: 12, train: true, evaluate: true, forecast: true, report: false });
   const detResult = runPipeline(incidents, { model_name, target: "detained_count", level: "governorate", horizon_months: 12, train: true, evaluate: true, forecast: true, report: false });

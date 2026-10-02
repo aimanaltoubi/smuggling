@@ -247,6 +247,65 @@ export class MixtureBaseline {
   }
 }
 
+// ===========================================================================
+// SeasonalClimatologyModel — calendar-month climatology (captures seasonality)
+// For each entity, computes the mean per calendar month (1-12) from training
+// history, then predicts that month's mean for each future month. This produces
+// a forecast that varies across months (unlike AverageModel which is flat).
+// ===========================================================================
+export class SeasonalClimatologyModel {
+  constructor({ targets, windowMonths, partition, loa }) {
+    this.targets = targets; this.windowMonths = windowMonths || 36; this.partition = partition; this.loa = loa;
+  }
+  get testStart() { return this.partition.test_start; }
+  get trainEnd() { return this.testStart - 1; }
+  get outputLength() { return this.partition.output_length || 36; }
+  fit(rows) {
+    const panel = rows.cells ? rows : rowsToPanel(rows, this.targets[0]);
+    const byEnt = panelByEntity(panel);
+    const monthlyMeans = {}; // {entity: [12 values, index 0=Jan]}
+    for (const [ent, arr] of byEnt) {
+      const past = arr.filter((c) => c.month_id <= this.trainEnd);
+      if (!past.length) continue;
+      const window = past.slice(-this.windowMonths);
+      const sums = new Array(12).fill(0);
+      const counts = new Array(12).fill(0);
+      for (const c of window) {
+        const calMonth = ((c.month_id - 1) % 12); // 0-indexed
+        sums[calMonth] += (c[this.targets[0]] || 0);
+        counts[calMonth] += 1;
+      }
+      // fill months with no data using the entity's overall mean
+      const overallMean = sums.reduce((s, v) => s + v, 0) / Math.max(1, counts.reduce((s, v) => s + v, 0));
+      const means = [];
+      for (let i = 0; i < 12; i++) {
+        means.push(counts[i] > 0 ? sums[i] / counts[i] : overallMean);
+      }
+      monthlyMeans[ent] = means;
+    }
+    this._units = Object.keys(monthlyMeans).sort();
+    this._monthlyMeans = monthlyMeans;
+    return this;
+  }
+  predict(rows, sequenceNumber = 0) {
+    const start = this.testStart + sequenceNumber;
+    const months = Array.from({ length: this.outputLength }, (_, i) => start + i);
+    const out = {};
+    for (const t of this.targets) {
+      const time = [], unit = [], y = [];
+      for (const m of months) {
+        const calMonth = ((m - 1) % 12); // 0-indexed
+        for (const u of this._units) {
+          time.push(m); unit.push(u);
+          y.push([this._monthlyMeans[u][calMonth] || 0]);
+        }
+      }
+      out[t] = makeFrame(y, time, unit, this.loa, t);
+    }
+    return out;
+  }
+}
+
 /**
  * Convert a PredictionFrame to the pipeline's projection list format.
  */
