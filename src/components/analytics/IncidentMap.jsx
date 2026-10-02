@@ -149,8 +149,10 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
   useEffect(() => {
     const viewer = viewerRef.current?.cesiumElement;
     if (!viewer) return;
-    viewer.camera.setView({
+    viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(OMAN.lon, OMAN.lat, OMAN.height),
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 },
+      duration: 1.6,
     });
     // Drape grid on 3D terrain (mountains) like the PRIO-GRID reference.
     try {
