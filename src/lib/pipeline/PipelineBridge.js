@@ -90,7 +90,7 @@ export function pipelineStrategicForecast(incidents, opts = {}) {
  * in the shape PredictionSection and IncidentMap expect.
  */
 export function pipelineTacticalPrediction(incidents, opts = {}) {
-  const { horizonDays = 14, model_name = "TrendSeasonalModel" } = opts;
+  const { horizonDays = 14, model_name = "TrendSeasonalModel", momentumWeight = 0.4 } = opts;
 
   const incResult = runPipeline(incidents, { model_name, target: "incidents", level: "governorate", horizon_months: 12, train: true, evaluate: true, forecast: true, report: false });
   const detResult = runPipeline(incidents, { model_name, target: "detained_count", level: "governorate", horizon_months: 12, train: true, evaluate: true, forecast: true, report: false });
@@ -118,7 +118,7 @@ export function pipelineTacticalPrediction(incidents, opts = {}) {
   const recentDailyRate = recent30Count / 30;
 
   // Blend pipeline rate (seasonality + trend) with recent momentum
-  const dailyRate = 0.6 * pipelineDailyRate + 0.4 * recentDailyRate;
+  const dailyRate = (1 - momentumWeight) * pipelineDailyRate + momentumWeight * recentDailyRate;
 
   // Daily breakdown (flat from pipeline monthly rate)
   const dailyForecast = [];
@@ -148,10 +148,14 @@ export function pipelineTacticalPrediction(incidents, opts = {}) {
   const topGov = ranking[0]?.governorate || valid[0]?.governorate;
   const topLoc = valid.filter((i) => i.governorate === topGov).sort((a, b) => new Date(b.incident_date) - new Date(a.incident_date))[0];
 
-  // Detained from pipeline
+  // Detained from pipeline + momentum blend
   const detProjections = detResult.forecast?.projections || [];
   const firstMonthDetained = detProjections.filter((p) => p.month_id === firstMonth).reduce((s, p) => s + (p.value || 0), 0);
-  const expectedTotalDetained = +(firstMonthDetained * (horizonDays / 30)).toFixed(1);
+  const detPipelineDailyRate = firstMonthDetained / 30;
+  const recent30Detained = valid.filter((i) => new Date(i.incident_date) >= recent30Start).reduce((s, i) => s + (i.detained_count || 0), 0);
+  const recentDetDailyRate = recent30Detained / 30;
+  const detDailyRate = (1 - momentumWeight) * detPipelineDailyRate + momentumWeight * recentDetDailyRate;
+  const expectedTotalDetained = +(detDailyRate * horizonDays).toFixed(1);
   const expectedDetainedPerIncident = firstMonthIncidents > 0 ? +(firstMonthDetained / firstMonthIncidents).toFixed(1) : 0;
 
   // Type prediction
@@ -171,7 +175,9 @@ export function pipelineTacticalPrediction(incidents, opts = {}) {
     model: {
       pipelineModel: model_name, source: "MLOps Pipeline (ViEWS)",
       monthlyRate: +firstMonthIncidents.toFixed(2), dailyRate: +dailyRate.toFixed(3),
-      trendFactor: 1, recentDailyRate: +dailyRate.toFixed(3), overallDailyRate: +(valid.length / totalDays).toFixed(3),
+      pipelineDailyRate: +pipelineDailyRate.toFixed(3), recentDailyRate: +recentDailyRate.toFixed(3),
+      detPipelineDailyRate: +detPipelineDailyRate.toFixed(3), recentDetDailyRate: +recentDetDailyRate.toFixed(3),
+      momentumWeight, trendFactor: 1, overallDailyRate: +(valid.length / totalDays).toFixed(3),
     },
     when: {
       totalExpectedIncidents: totalExpected,
