@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Viewer, Entity } from "resium";
 import Cesium from "@/lib/cesiumConfig";
+import { predictNextEvent } from "@/lib/analytics/prediction";
 
 const OMAN = { lon: 56.0, lat: 21.5, height: 900000 };
 
@@ -88,7 +89,7 @@ function buildOmanPrioGrid(incidents, prediction) {
     } else if (c.count > 0) {
       c.color = Cesium.Color.fromHsl(0.0, c.baseRisk, 0.5, 0.35 + c.baseRisk * 0.3);
     } else {
-      c.color = Cesium.Color.fromHsl(0.6, 0.1, 0.5, 0.06); // faint empty cell
+      c.color = Cesium.Color.fromHsl(0.6, 0.08, 0.7, 0.14); // visible empty cell across Oman
     }
   }
   return all;
@@ -145,6 +146,11 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
   const shown = hasData ? incidents.slice(0, 400) : [];
   const viewerRef = useRef(null);
   const [view, setView] = useState("prio"); // "prio" | "sectors" | "points"
+  const [horizon, setHorizon] = useState("14"); // "14" (two weeks) | "30" (one month)
+
+  const pred14 = useMemo(() => (hasData ? predictNextEvent(incidents, { horizonDays: 14 }) : null), [incidents, hasData]);
+  const pred30 = useMemo(() => (hasData ? predictNextEvent(incidents, { horizonDays: 30 }) : null), [incidents, hasData]);
+  const activePrediction = horizon === "14" ? pred14 : pred30;
 
   useEffect(() => {
     const viewer = viewerRef.current?.cesiumElement;
@@ -160,15 +166,15 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
     } catch (e) { /* fall back to ellipsoid */ }
   }, []);
 
-  const prioGrid = useMemo(() => (hasData ? buildOmanPrioGrid(incidents, prediction) : []), [incidents, hasData, prediction]);
+  const prioGrid = useMemo(() => (hasData ? buildOmanPrioGrid(incidents, activePrediction) : []), [incidents, hasData, activePrediction]);
   const sectors = useMemo(() => (hasData ? buildBorderSectors(incidents) : []), [incidents, hasData]);
 
   const predCoords = useMemo(() => {
-    if (!prediction) return null;
-    const g = prediction.where.governorate;
+    if (!activePrediction) return null;
+    const g = activePrediction.where.governorate;
     const rec = incidents.find((i) => i.governorate === g);
     return rec ? { lon: rec.longitude, lat: rec.latitude } : null;
-  }, [prediction, incidents]);
+  }, [activePrediction, incidents]);
 
   const btn = (active) => `px-3 py-1.5 rounded-lg text-sm ${active ? "bg-slate-900 text-white" : "bg-muted"}`;
 
@@ -186,9 +192,18 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,20%,50%)" }} />منخفضة</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,60%,50%)" }} />متوسطة</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,100%,50%)" }} />عالية</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(30,85%,50%)" }} />منطقة تنبؤ</span>
           </div>
         )}
       </div>
+
+      {view === "prio" && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">أفق التنبؤ:</span>
+          <button onClick={() => setHorizon("14")} className={btn(horizon === "14")}>أسبوعان</button>
+          <button onClick={() => setHorizon("30")} className={btn(horizon === "30")}>شهر</button>
+        </div>
+      )}
 
       <div
         style={{
@@ -223,12 +238,12 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                   coordinates: Cesium.Rectangle.fromDegrees(cell.bounds.west, cell.bounds.south, cell.bounds.east, cell.bounds.north),
                   material: cell.color,
                   classificationType: Cesium.ClassificationType.TERRAIN,
-                  outline: active,
+                  outline: true,
                   outlineColor: cell.isPeak
                     ? Cesium.Color.WHITE
                     : cell.isPredictionArea
                       ? Cesium.Color.ORANGE
-                      : Cesium.Color.WHITE.withAlpha(0.2),
+                      : Cesium.Color.WHITE.withAlpha(0.22),
                   outlineWidth: cell.isPeak ? 2 : 1,
                 }}
                 label={active ? {
@@ -319,7 +334,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
             />
           ))}
 
-          {prediction && predCoords && (
+          {activePrediction && predCoords && (
             <Entity
               position={Cesium.Cartesian3.fromDegrees(predCoords.lon, predCoords.lat)}
               point={{
@@ -330,11 +345,11 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
               }}
               description={`
                 <div dir="rtl" style="text-align:right;font-family:sans-serif">
-                  <strong>التنبؤ: الحدث القادم</strong><br/>
-                  المحافظة: ${prediction.where.governorate}<br/>
-                  الفترة: ${prediction.forecastWindow.startLabel} ← ${prediction.forecastWindow.endLabel}<br/>
-                  الحوادث المتوقعة: ${prediction.when.totalExpectedIncidents}<br/>
-                  المعتقلون المتوقعون: ${prediction.howMany.expectedTotalDetained}
+                  <strong>التنبؤ: الحدث القادم (${horizon === "14" ? "أسبوعان" : "شهر"})</strong><br/>
+                  المحافظة: ${activePrediction.where.governorate}<br/>
+                  الفترة: ${activePrediction.forecastWindow.startLabel} ← ${activePrediction.forecastWindow.endLabel}<br/>
+                  الحوادث المتوقعة: ${activePrediction.when.totalExpectedIncidents}<br/>
+                  المعتقلون المتوقعون: ${activePrediction.howMany.expectedTotalDetained}
                 </div>
               `}
             />
@@ -342,9 +357,9 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
         </Viewer>
       </div>
 
-      {view === "prio" && prioGrid.length > 0 && (
+      {view === "prio" && prioGrid.length > 0 && activePrediction && (
         <p className="text-xs text-muted-foreground">
-          PRIO-GRID معياري (0.5° × 0.5°) يغطي سلطنة عمان بالكامل — {prioGrid.length} خلية. الخلايا الفاتحة بلا حوادث، الحمراء حسب الكثافة، والبرتقالية هي مناطق التنبؤ المحتملة (★ ذروة التنبؤ).
+          PRIO-GRID معياري (0.5° × 0.5°) يغطي سلطنة عمان بالكامل — {prioGrid.length} خلية. أفق التنبؤ الحالي: {horizon === "14" ? "أسبوعان" : "شهر"} ({activePrediction.forecastWindow.startLabel} ← {activePrediction.forecastWindow.endLabel}) — {activePrediction.when.totalExpectedIncidents} حادث متوقع، {activePrediction.howMany.expectedTotalDetained} معتقل. البرتقالية هي مناطق التنبؤ المحتملة (★ ذروة التنبؤ).
         </p>
       )}
       {view === "sectors" && sectors.length > 0 && (
