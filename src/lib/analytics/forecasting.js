@@ -122,3 +122,39 @@ export function forecastSeries(monthlySeries, valueKey, seasonLength = 12, horiz
   });
   return { projection, params: result.params, residStd: +result.residStd.toFixed(3), fitted: result.fitted };
 }
+
+// ---------- Pipeline-compatible adapters (MLOps pipeline) ----------
+// These wrap the core Holt-Winters above for the ViEWS-style pipeline stages,
+// which work with (month_id, value) series rather than period-labeled objects.
+
+// Build a [[month_id, value], ...] series from pipeline frame rows.
+// metric: "detained_count" sums detained; anything else counts incidents.
+export function prepareMonthlySeries(frameRows, metric = "incidents") {
+  const map = {};
+  for (const r of frameRows) {
+    const mid = r.month_id;
+    if (mid == null) continue;
+    if (!map[mid]) map[mid] = 0;
+    map[mid] += metric === "detained_count" ? (r.detained_count || 0) : 1;
+  }
+  return Object.keys(map).map((k) => [parseInt(k, 10), map[k]]).sort((a, b) => a[0] - b[0]);
+}
+
+// Holt-Winters forecast returning pipeline-shaped output.
+export function holtWintersForecast(series, opts = {}) {
+  const horizon = opts.horizon || 48;
+  const seasonLength = opts.seasonalPeriods || 12;
+  const values = series.map(([, v]) => v);
+  const result = holtWintersAdditive(values, seasonLength, horizon);
+  const lastMonthId = series.length ? series[series.length - 1][0] : 0;
+  const forecastMonths = result.forecast.map((_, h) => lastMonthId + h + 1);
+  return {
+    forecastValues: result.forecast,
+    ciLower: result.ci.map((c) => c.lower80),
+    ciUpper: result.ci.map((c) => c.upper80),
+    forecastMonths,
+    fittedValues: result.fitted || [],
+    fittedMonths: series.map(([m]) => m),
+    modelState: { params: result.params, sse: result.sse, residStd: result.residStd },
+  };
+}
