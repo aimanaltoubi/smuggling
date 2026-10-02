@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { MapPin, CalendarClock, Users, Sparkles, CalendarOff, Activity } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
+import IncidentMap from "./IncidentMap";
 
 export default function PredictionSection({ incidents }) {
   const prediction = useMemo(() => {
@@ -22,6 +23,17 @@ export default function PredictionSection({ incidents }) {
 
   return (
     <div className="space-y-6" dir="rtl">
+      {/* Predictive map (PRIO-GRID with forecast overlay) */}
+      <div>
+        <h3 className="font-semibold mb-3">خريطة التنبؤ — PRIO-GRID</h3>
+        <IncidentMap incidents={incidents} prediction={prediction} />
+        <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> تهريب</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-600 inline-block" /> تسلل</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block border-2 border-white" /> التنبؤ بالحدث القادم</span>
+        </div>
+      </div>
+
       {/* Data endpoint banner */}
       <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
         <div className="flex items-center gap-2 text-amber-700 mb-2">

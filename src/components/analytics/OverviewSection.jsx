@@ -1,6 +1,5 @@
 import React from "react";
 import { Users, AlertTriangle, CalendarRange, MapPin } from "lucide-react";
-import IncidentMap from "./IncidentMap";
 
 function StatCard({ icon: Icon, label, value, sub }) {
   return (
@@ -68,15 +67,6 @@ export default function OverviewSection({ incidents, prediction }) {
         </div>
       </div>
 
-      <div>
-        <h3 className="font-semibold mb-3">خريطة الحوادث</h3>
-        <IncidentMap incidents={incidents} prediction={prediction} />
-        <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> تهريب</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-600 inline-block" /> تسلل</span>
-          {prediction && <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block border-2 border-white" /> التنبؤ بالحدث القادم</span>}
-        </div>
-      </div>
     </div>
   );
 }
