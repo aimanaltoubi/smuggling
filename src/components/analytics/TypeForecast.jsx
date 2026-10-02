@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { CalendarOff } from "lucide-react";
-import { buildMonthlySeries, forecastSeries } from "@/lib/analytics/forecasting";
+import { pipelineStrategicForecast } from "@/lib/pipeline/PipelineBridge";
 
 const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 function fmtDate(d) {
@@ -10,16 +10,18 @@ function fmtDate(d) {
 }
 
 // One forecast chart for a given set of incidents (already filtered by type).
+// Forecasts come from the MLOps pipeline (ViEWS baselines) — the same engine
+// that powers every prediction in the app.
 export default function TypeForecast({ incidents, metric, title, accent = "#0f172a" }) {
   const { chartData, projection, params, residStd, lastDate } = useMemo(() => {
-    const monthly = buildMonthlySeries(incidents, metric);
-    if (monthly.length < 3) return { chartData: [], projection: [], params: {}, residStd: 0, lastDate: null };
-    const fc = forecastSeries(monthly, metric, 12, 48);
-    const hist = monthly.map((m) => ({ period: m.period, actual: m[metric] }));
+    if (incidents.length < 3) return { chartData: [], projection: [], params: {}, residStd: 0, lastDate: null };
+    const fc = pipelineStrategicForecast(incidents, { target: metric, level: "governorate", horizon: 48 });
+    const hist = fc.historical.map((m) => ({ period: m.period, actual: m[metric] }));
+    if (!hist.length) return { chartData: [], projection: [], params: fc.params, residStd: fc.residStd, lastDate: null };
     const last = hist[hist.length - 1];
     const proj = fc.projection.map((p) => ({ period: p.period, forecast: p.value, lower95: p.lower95, upper95: p.upper95 }));
     const chartData = [...hist, { period: last.period, forecast: last.actual, lower95: last.actual, upper95: last.actual }, ...proj];
-    return { chartData, projection: fc.projection, params: fc.params, residStd: fc.residStd, lastDate: monthly[monthly.length - 1].date };
+    return { chartData, projection: fc.projection, params: fc.params, residStd: fc.residStd, lastDate: fc.historical[fc.historical.length - 1].date };
   }, [incidents, metric]);
 
   const metricLabel = metric === "incidents" ? "عدد الحوادث" : "عدد المعتقلين";
@@ -55,7 +57,7 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
           )}
         </div>
         <p className="text-xs text-muted-foreground mb-3">
-          {metricLabel} | صلب: تاريخي | متقطع: توقع | منقطة: حدود الثقة 95%
+          {metricLabel} | صلب: تاريخي | متقطع: توقع أنبوب MLOps | منقطة: حدود الثقة 80%
         </p>
         <div style={{ direction: "ltr", height: 300 }}>
           <ResponsiveContainer>
@@ -67,8 +69,8 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
               <Legend />
               <Line type="monotone" dataKey="actual" stroke={accent} name="تاريخي" strokeWidth={2} dot={false} connectNulls />
               <Line type="monotone" dataKey="forecast" stroke="#f59e0b" name="توقع" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls />
-              <Line type="monotone" dataKey="upper95" stroke="#f59e0b" name="حد أعلى 95%" strokeWidth={1} strokeDasharray="2 4" dot={false} opacity={0.4} />
-              <Line type="monotone" dataKey="lower95" stroke="#f59e0b" name="حد أدنى 95%" strokeWidth={1} strokeDasharray="2 4" dot={false} opacity={0.4} />
+              <Line type="monotone" dataKey="upper95" stroke="#f59e0b" name="حد أعلى" strokeWidth={1} strokeDasharray="2 4" dot={false} opacity={0.4} />
+              <Line type="monotone" dataKey="lower95" stroke="#f59e0b" name="حد أدنى" strokeWidth={1} strokeDasharray="2 4" dot={false} opacity={0.4} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -86,7 +88,7 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
           ))}
         </div>
         <div className="mt-3 text-xs text-muted-foreground">
-          α={params?.alpha}، β={params?.beta}، γ={params?.gamma} | الانحراف المتبقي: {residStd}
+          النموذج: {params?.model} ({params?.family}) | مستوى: {params?.level} | RMSE التحقق: {residStd}
         </div>
       </div>
     </div>

@@ -24,3 +24,4 @@ export { runPipeline, runEnsemble, defaultPartitions } from "./pipeline";
 export { MODEL_REGISTRY, ENSEMBLES, listModels, availableModels, modelFamilies, getModel } from "./ModelCatalog";
 export { rowsToPanel, panelByEntity, panelEntities, panelMonths } from "./PanelBuilder";
 export { ZeroModel, LocfModel, AverageModel, ConflictologyModel, MixtureBaseline, frameToProjections } from "./Baselines";
+export { pipelineStrategicForecast, pipelineTacticalPrediction } from "./PipelineBridge";

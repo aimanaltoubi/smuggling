@@ -65,7 +65,7 @@ export default function PipelineSection({ incidents }) {
     <div className="space-y-6" dir="rtl">
       {/* Architecture diagram */}
       <div className="rounded-xl border border-border bg-card p-4">
-        <h3 className="font-semibold mb-3">معمارية الأنبوب (MLOps — ViEWS-inspired)</h3>
+        <h3 className="font-semibold mb-3">محرك التنبؤ — أنبوب MLOps (ViEWS-inspired) — هذا هو المحرك الذي ينتج كل التوقعات في النظام</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
           {STAGES.map((s, i) => {
             const Icon = s.icon;

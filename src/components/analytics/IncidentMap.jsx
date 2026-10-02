@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Viewer, Entity } from "resium";
 import Cesium from "@/lib/cesiumConfig";
-import { predictNextEvent } from "@/lib/analytics/prediction";
+import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 
 const OMAN = { lon: 56.0, lat: 21.5, height: 900000 };
 
@@ -148,8 +148,8 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
   const [view, setView] = useState("prio"); // "prio" | "sectors" | "points"
   const [horizon, setHorizon] = useState("14"); // "14" (two weeks) | "30" (one month)
 
-  const pred14 = useMemo(() => (hasData ? predictNextEvent(incidents, { horizonDays: 14 }) : null), [incidents, hasData]);
-  const pred30 = useMemo(() => (hasData ? predictNextEvent(incidents, { horizonDays: 30 }) : null), [incidents, hasData]);
+  const pred14 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 14 }) : null), [incidents, hasData]);
+  const pred30 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 30 }) : null), [incidents, hasData]);
   const activePrediction = horizon === "14" ? pred14 : pred30;
 
   useEffect(() => {

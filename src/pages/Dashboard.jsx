@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, BarChart3, TrendingUp, Target, Layers, Loader2 } from "lucide-react";
 import { loadIncidents } from "@/lib/analytics/dataLoader";
-import { predictNextEvent } from "@/lib/analytics/prediction";
+import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 import OverviewSection from "@/components/analytics/OverviewSection";
 import EdaSection from "@/components/analytics/EdaSection";
 import ForecastSection from "@/components/analytics/ForecastSection";
@@ -27,7 +27,10 @@ export default function Dashboard() {
       .catch((e) => setError(e.message || "فشل تحميل البيانات"));
   }, []);
 
-  const prediction = incidents && incidents.length ? predictNextEvent(incidents) : null;
+  const prediction = useMemo(
+    () => (incidents && incidents.length ? pipelineTacticalPrediction(incidents, { horizonDays: 14 }) : null),
+    [incidents]
+  );
 
   if (error) {
     return (

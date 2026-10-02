@@ -1,12 +1,12 @@
 import React, { useMemo } from "react";
 import { MapPin, CalendarClock, Users, Sparkles, CalendarOff, Activity } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { predictNextEvent } from "@/lib/analytics/prediction";
+import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 
 export default function PredictionSection({ incidents }) {
   const prediction = useMemo(() => {
     if (!incidents.length) return null;
-    return predictNextEvent(incidents);
+    return pipelineTacticalPrediction(incidents, { horizonDays: 14 });
   }, [incidents]);
 
   if (!prediction) {
@@ -46,8 +46,8 @@ export default function PredictionSection({ incidents }) {
           <div className="flex items-start gap-2">
             <Activity className="w-4 h-4 text-amber-600 mt-0.5" />
             <div>
-              <div className="text-muted-foreground text-xs">معامل الاتجاه (آخر 30 يوم / التاريخي)</div>
-              <div className="font-medium">{prediction.model.trendFactor}× — {prediction.model.recentDailyRate} مقابل {prediction.model.overallDailyRate} حادث/يوم</div>
+              <div className="text-muted-foreground text-xs">معدل الأنبوب (شهر → يوم)</div>
+              <div className="font-medium">{prediction.model.monthlyRate} حادث/شهر — {prediction.model.dailyRate} حادث/يوم | {prediction.model.pipelineModel}</div>
             </div>
           </div>
         </div>
