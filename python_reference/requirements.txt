@@ -1,0 +1,24 @@
+# VIEWS-compatible Oman border forecasting pipeline — real dependencies.
+#
+# These are the actual libraries used by views-stepshifter and views-baseline.
+# Install with:  pip install -r requirements.txt
+#
+# Core (always required):
+numpy>=1.26,<3.0
+pandas>=2.1,<3.0
+scipy>=1.11,<2.0
+
+# Stepshifter ML backends (views-stepshifter uses Darts, which wraps these):
+scikit-learn>=1.4,<2.0
+lightgbm>=4.3,<5.0
+xgboost>=2.0,<3.0
+
+# Optional: the real Darts library (views-stepshifter is built on it).
+# Uncomment to use the Darts-backed adapter instead of the raw regressors.
+# darts>=0.28,<1.0
+
+# Optional: Weights & Biases logging (WandB). Uncomment for live run tracking.
+# wandb>=0.16,<1.0
+
+# Optional: statsmodels (alternative Holt-Winters / ETS implementation).
+# statsmodels>=0.14,<1.0

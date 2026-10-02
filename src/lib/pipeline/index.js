@@ -21,3 +21,6 @@ export { default as ReconciliationModule } from "./ReconciliationModule";
 export { default as ModelValidator } from "./ModelValidator";
 export { default as ForecastingModelArgs } from "./ForecastingModelArgs";
 export { runPipeline, runEnsemble, defaultPartitions } from "./pipeline";
+export { MODEL_REGISTRY, ENSEMBLES, listModels, availableModels, modelFamilies, getModel } from "./ModelCatalog";
+export { rowsToPanel, panelByEntity, panelEntities, panelMonths } from "./PanelBuilder";
+export { ZeroModel, LocfModel, AverageModel, ConflictologyModel, MixtureBaseline, frameToProjections } from "./Baselines";

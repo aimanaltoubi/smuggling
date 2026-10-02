@@ -2,8 +2,10 @@
 ForecastingStage — post-processing, validation, and persistence of forecast
 predictions for the future horizon.
 
-Takes the trained artifact and produces future-horizon projections with
-confidence intervals. Validates non-negativity and finite values.
+Takes the trained model (from TrainingStage) and produces future-horizon
+projections with confidence intervals. Validates non-negativity and finite
+values. Converts the model's PredictionFrame output into the pipeline's
+projection list format.
 """
 
 import json
@@ -11,7 +13,9 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from forecasting import prepare_monthly_series, holt_winters_forecast
+import numpy as np
+
+from ..data.panel import rows_to_panel
 
 
 @dataclass(frozen=True)
@@ -20,7 +24,9 @@ class ForecastOutput:
     horizon_months: int
     target: str
     level: str
+    model_name: str
     validated: bool
+    reconciliation: Any = None
 
 
 class ForecastingStage:
@@ -29,47 +35,55 @@ class ForecastingStage:
     def execute(self, ctx, train_output: Any) -> ForecastOutput:
         config = ctx.config
         target = config.target
-        train_rows = ctx.data["partitions"]["train"]
+        level = config.level
+        model = train_output.model
+        model_name = train_output.model_name
 
-        series = prepare_monthly_series(train_rows, metric=target)
-        hp = config.hyperparameters.get("forecasting", {})
-        horizon = hp.get("horizon_months", 48)
+        # build the full panel (train + any forecast-partition actuals) for feature lags
+        all_rows = ctx.data["partitions"]["train"] + ctx.data["partitions"]["validation"]
+        panel = rows_to_panel(all_rows, target=target, level=level)
 
-        fc = holt_winters_forecast(
-            series,
-            horizon=horizon,
-            alpha=hp.get("alpha", 0.4),
-            beta=hp.get("beta", 0.1),
-            gamma=hp.get("gamma", 0.2),
-            seasonal_periods=hp.get("seasonal_periods", 12),
-        )
-
-        forecast_values = fc.get("forecast_values", [])
-        ci_lower = fc.get("ci_lower", [])
-        ci_upper = fc.get("ci_upper", [])
-        months = fc.get("forecast_months", [])
+        # predict at sequence_number 0 (forecast starts at partition.forecast_start)
+        pred_frames = model.predict(panel, sequence_number=0)
 
         projections: List[Dict[str, Any]] = []
-        for i, val in enumerate(forecast_values):
-            # post-processing: clamp to non-negative (incident counts)
-            clamped = max(0.0, val)
-            projections.append({
-                "month_id": months[i] if i < len(months) else None,
-                "entity_id": "all" if config.level == "governorate" else "all",
-                "value": round(clamped, 3),
-                "ci_lower": round(max(0.0, ci_lower[i]) if i < len(ci_lower) else clamped, 3),
-                "ci_upper": round(ci_upper[i] if i < len(ci_upper) else clamped, 3),
-            })
+        for tgt, pf in pred_frames.items():
+            y = pf.y_pred
+            if y.ndim == 2 and y.shape[1] == 1:
+                # point forecast
+                for i in range(len(pf.time)):
+                    val = float(max(0.0, y[i, 0]))
+                    projections.append({
+                        "month_id": int(pf.time[i]),
+                        "entity_id": str(pf.unit[i]),
+                        "value": round(val, 3),
+                        "ci_lower": round(max(0.0, val * 0.8), 3),
+                        "ci_upper": round(val * 1.2, 3),
+                    })
+            elif y.ndim == 2 and y.shape[1] > 1:
+                # distributional — use the mean as point, percentiles as CI
+                for i in range(len(pf.time)):
+                    row = y[i, :]
+                    val = float(max(0.0, row.mean()))
+                    projections.append({
+                        "month_id": int(pf.time[i]),
+                        "entity_id": str(pf.unit[i]),
+                        "value": round(val, 3),
+                        "ci_lower": round(max(0.0, float(np.percentile(row, 10))), 3),
+                        "ci_upper": round(float(np.percentile(row, 90)), 3),
+                    })
 
         validated = self._validate(projections)
 
-        self._persist(ctx, projections, horizon, target, config.level)
+        self._persist(ctx, projections, config.hyperparameters.get("forecasting", {}).get("horizon_months", 36),
+                      target, level, model_name)
 
         return ForecastOutput(
             projections=projections,
-            horizon_months=horizon,
+            horizon_months=config.hyperparameters.get("forecasting", {}).get("horizon_months", 36),
             target=target,
-            level=config.level,
+            level=level,
+            model_name=model_name,
             validated=validated,
         )
 
@@ -80,11 +94,11 @@ class ForecastingStage:
                 return False
         return True
 
-    def _persist(self, ctx, projections, horizon, target, level):
+    def _persist(self, ctx, projections, horizon, target, level, model_name):
         try:
             with open(ctx.paths.forecast_path, "w", encoding="utf-8") as f:
                 json.dump({"projections": projections, "horizon_months": horizon,
-                           "target": target, "level": level},
+                           "target": target, "level": level, "model_name": model_name},
                           f, ensure_ascii=False, indent=2)
         except OSError:
             pass

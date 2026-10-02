@@ -22,10 +22,10 @@ class ForecastingModelArgs:
     monthly: bool = False
     ensemble: Optional[str] = None
     saved: bool = False
-    model_name: str = "oman_border_default"
+    model_name: str = "RandomForestStepshifter"
     target: str = "detained_count"
     level: str = "governorate"
-    horizon_months: int = 48
+    horizon_months: int = 36
     horizon_days: int = 14
 
     def validate(self) -> List[str]:

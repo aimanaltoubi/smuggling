@@ -17,7 +17,17 @@ const DEFAULT_DEPLOYMENT = {
 };
 
 const DEFAULT_HYPERPARAMETERS = {
-  forecasting: { horizon_months: 48, seasonal_periods: 12, alpha: 0.4, beta: 0.1, gamma: 0.2 },
+  forecasting: { horizon_months: 36 },  // VIEWS standard 36-month horizon
+  model: {
+    window_months: 24,    // baseline rolling window
+    n_samples: 100,       // distributional draw count
+    lambda_mix: 0.3,      // MixtureBaseline local/global mix
+    family: "nb",          // ParametricConflictology family
+    transform: "none",
+    lags: [1, 2, 3, 6, 12],
+    rolling_windows: [3, 6, 12],
+    threshold: 1.0,        // HurdleModel zero/non-zero threshold
+  },
   prediction: { horizon_days: 14 },
 };
 

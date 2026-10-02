@@ -30,10 +30,10 @@ export function defaultPartitions(records) {
 
 export function runPipeline(records, opts = {}) {
   const {
-    model_name = "oman_border_default",
+    model_name = "AverageModel",
     target = "detained_count",
     level = "governorate",
-    horizon_months = 48,
+    horizon_months = 36,
     train = true, evaluate = true, forecast = true, report = true,
     reference = null,
   } = opts;
@@ -52,10 +52,15 @@ export function runPipeline(records, opts = {}) {
 
 export function runEnsemble(records, spec, opts = {}) {
   const { target = "detained_count", level = "governorate" } = opts;
-  const memberForecasts = spec.members.map((member) =>
-    runPipeline(records, { model_name: member, target, level, train: true, evaluate: false, forecast: true, report: false })
-  ).map((r) => ({ projections: r.forecast.projections }));
+  const memberResults = spec.members.map((member) =>
+    runPipeline(records, { model_name: member, target, level, train: true, evaluate: true, forecast: true, report: false })
+  );
+  const memberForecasts = memberResults.map((r) => ({ projections: r.forecast.projections }));
+  const memberRmse = memberResults.map((r) => {
+    const ts = r.evaluate?.ts_metrics || {};
+    return ts.overall_rmse != null && !Number.isNaN(ts.overall_rmse) ? ts.overall_rmse : null;
+  });
 
   const ensembleMgr = new EnsembleManager(spec);
-  return ensembleMgr.aggregate(memberForecasts);
+  return ensembleMgr.aggregate(memberForecasts, memberRmse);
 }

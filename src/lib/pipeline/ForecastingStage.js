@@ -1,44 +1,37 @@
 /**
  * ForecastingStage — post-processing, validation, and persistence of forecast
  * predictions for the future horizon.
+ *
+ * Takes the trained model (from TrainingStage) and produces future-horizon
+ * projections. Converts the model's PredictionFrame output into the pipeline's
+ * projection list format.
+ *
+ * JS mirror of python_reference/pipeline/stages/forecasting_stage.py.
  */
 
-import { prepareMonthlySeries, holtWintersForecast } from "@/lib/analytics/forecasting";
+import { rowsToPanel } from "./PanelBuilder";
+import { frameToProjections } from "./Baselines";
 
 export default class ForecastingStage {
   execute(ctx, trainOutput) {
     const config = ctx.config;
     const target = config.target;
-    const trainRows = ctx.data.partitions.train;
+    const level = config.level;
+    const model = trainOutput.model;
+    const horizon = (config.hyperparameters.forecasting || {}).horizon_months || 36;
 
-    const series = prepareMonthlySeries(trainRows, target);
-    const hp = config.hyperparameters.forecasting || {};
-    const horizon = hp.horizon_months || 48;
+    // build the full panel (train + validation) for feature lags
+    const allRows = [...ctx.data.partitions.train, ...ctx.data.partitions.validation];
+    const panel = rowsToPanel(allRows, target, level);
 
-    const fc = holtWintersForecast(series, {
-      horizon, alpha: hp.alpha, beta: hp.beta, gamma: hp.gamma,
-      seasonalPeriods: hp.seasonal_periods,
-    });
-
-    const forecastValues = fc.forecastValues || [];
-    const ciLower = fc.ciLower || [];
-    const ciUpper = fc.ciUpper || [];
-    const months = fc.forecastMonths || [];
-
-    const projections = forecastValues.map((val, i) => {
-      const clamped = Math.max(0, val);
-      return {
-        month_id: months[i] || null,
-        entity_id: "all",
-        value: +clamped.toFixed(3),
-        ci_lower: +Math.max(0, ciLower[i] ?? clamped).toFixed(3),
-        ci_upper: +(ciUpper[i] ?? clamped).toFixed(3),
-      };
-    });
-
+    const predFrames = model.predict(panel, 0);
+    const projections = frameToProjections(predFrames);
     const validated = this._validate(projections);
 
-    return Object.freeze({ projections, horizon_months: horizon, target, level: config.level, validated });
+    return Object.freeze({
+      projections, horizon_months: horizon, target, level,
+      model_name: trainOutput.model_name, validated,
+    });
   }
 
   _validate(projections) {

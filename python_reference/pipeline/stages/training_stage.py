@@ -1,23 +1,28 @@
 """
 TrainingStage — fits the forecasting model and creates a training log.
 
-Uses the dependency-free Holt-Winters triple exponential smoothing from
-forecasting.py (portable, air-gapped). Produces a fitted-model artifact
-(serialized as JSON) plus a training log with provenance metadata.
+Uses the real VIEWS-compatible models from `models.catalog.ModelCatalog`
+(baselines + stepshifters). The fitted model is the artifact. Produces a
+training log with provenance metadata.
 
-WandB alerts are stubbed (no network in air-gapped mode).
+WandB alerts are stubbed (no network in air-gapped mode); enable wandb in
+requirements.txt + config.deployment.wandb_enabled for live logging.
 """
 
 import json
-from dataclasses import dataclass, asdict
-from typing import Any, Dict, List
+import pickle
+import base64
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
-from forecasting import prepare_monthly_series, holt_winters_forecast
+from ..data.panel import rows_to_panel
 
 
 @dataclass(frozen=True)
 class TrainingOutput:
-    artifact: Dict[str, Any]       # serialized fitted model
+    model: Any                    # the fitted model object
+    model_name: str
+    artifact: Dict[str, Any]      # serialized metadata (model pickled separately)
     fitted_values: List[Dict[str, Any]]
     training_log: Dict[str, Any]
 
@@ -26,60 +31,90 @@ class TrainingStage:
     """Train: fit model → create artifact → log provenance."""
 
     def execute(self, ctx) -> TrainingOutput:
+        from models.catalog import ModelCatalog
+
         train_rows = ctx.data["partitions"]["train"]
         config = ctx.config
         target = config.target
+        level = config.level
+        loa = "pgm" if level == "priogrid" else "cm"
 
-        series = prepare_monthly_series(train_rows, metric=target)
-        hp = config.hyperparameters.get("forecasting", {})
-        horizon = hp.get("horizon_months", 48)
+        # build the panel
+        panel = rows_to_panel(train_rows, target=target, level=level)
 
-        forecast_result = holt_winters_forecast(
-            series,
-            horizon=horizon,
-            alpha=hp.get("alpha", 0.4),
-            beta=hp.get("beta", 0.1),
-            gamma=hp.get("gamma", 0.2),
-            seasonal_periods=hp.get("seasonal_periods", 12),
-        )
+        # partition dict for the models (test_start = forecast_start)
+        partitions = config.partitions
+        model_partition = {
+            "test_start": partitions.forecast_start,
+            "output_length": config.hyperparameters.get("forecasting", {}).get("horizon_months", 36),
+        }
+
+        # resolve model name from config.meta, default to a stepshifter if available
+        model_name = config.meta.get("model_name", "RandomForestStepshifter")
+        hp = config.hyperparameters.get("model", {})
+
+        model = ModelCatalog.get(model_name, target=target,
+                                  partition_dict=model_partition, loa=loa,
+                                  hyperparameters=hp)
+        model.fit(panel)
+
+        # fitted values (one-step-ahead on training data, if available)
+        fitted_values = self._extract_fitted(model, panel)
 
         artifact = {
-            "model_name": config.model_name,
+            "model_name": model_name,
             "target": target,
-            "level": config.level,
+            "level": level,
+            "loa": loa,
             "hyperparameters": hp,
-            "fitted_state": forecast_result.get("model_state", {}),
-            "n_train_points": len(series),
+            "n_train_points": len(panel),
+            "n_entities": panel.index.get_level_values(1).nunique(),
+            "model_family": "stepshifter" if "Stepshifter" in model_name or "Hurdle" in model_name else "baseline",
         }
-
-        fitted_values = [
-            {"month_id": m, "fitted": v}
-            for m, v in zip(forecast_result.get("fitted_months", []),
-                            forecast_result.get("fitted_values", []))
-        ]
 
         training_log = {
-            "model_name": config.model_name,
+            "model_name": model_name,
             "run_id": ctx.run_id,
             "target": target,
-            "level": config.level,
-            "n_train_points": len(series),
+            "level": level,
+            "n_train_points": len(panel),
+            "n_entities": panel.index.get_level_values(1).nunique(),
             "hyperparameters": hp,
             "stages_run": ["train"],
-            "wandb_alert": "stubbed (air-gapped)",
+            "wandb_alert": "stubbed (air-gapped)" if not config.deployment.get("wandb_enabled") else "wandb_logged",
         }
 
-        # persist artifact + log
-        self._persist(ctx, artifact, training_log)
+        self._persist(ctx, model, artifact, training_log)
 
-        return TrainingOutput(artifact=artifact, fitted_values=fitted_values,
-                              training_log=training_log)
+        return TrainingOutput(model=model, model_name=model_name, artifact=artifact,
+                              fitted_values=fitted_values, training_log=training_log)
 
-    def _persist(self, ctx, artifact, log):
+    def _extract_fitted(self, model, panel) -> List[Dict[str, Any]]:
+        """Best-effort extraction of in-sample fitted values."""
+        try:
+            if hasattr(model, "_fitted_frame") and model._fitted_frame is not None:
+                ff = model._fitted_frame
+                target = model.target if hasattr(model, "target") else None
+                if target and target in ff.columns:
+                    return [
+                        {"month_id": int(mid), "entity_id": str(eid), "fitted": float(val)}
+                        for (mid, eid), val in zip(ff.index, ff[target].values)
+                        if not (val != val)  # skip NaN
+                    ][:200]  # cap for log size
+        except Exception:
+            pass
+        return []
+
+    def _persist(self, ctx, model, artifact, log):
         try:
             with open(ctx.paths.artifact_path, "w", encoding="utf-8") as f:
                 json.dump(artifact, f, ensure_ascii=False, indent=2)
             with open(ctx.paths.training_log_path, "w", encoding="utf-8") as f:
                 json.dump(log, f, ensure_ascii=False, indent=2)
+            # pickle the fitted model alongside the artifact
+            import os
+            model_path = ctx.paths.artifact_path.replace(".json", ".pkl")
+            with open(model_path, "wb") as f:
+                pickle.dump(model, f)
         except OSError:
             pass  # air-gapped: persist best-effort

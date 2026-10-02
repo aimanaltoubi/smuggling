@@ -71,22 +71,31 @@ def run_pipeline(records: List[dict],
 
 def run_ensemble(records: List[dict], spec: EnsembleSpec,
                  target: str = "detained_count", level: str = "governorate") -> Dict[str, Any]:
-    """Run an ensemble of member models and aggregate + reconcile."""
+    """Run an ensemble of member models and aggregate + reconcile.
+
+    Pool-based weighting: each member is evaluated on the validation partition,
+    and its RMSE determines its ensemble weight (inverse-RMSE pooling).
+    """
     logger = configure_logging(model_name=f"ensemble_{spec.name}")
     logger.info(f"Starting ensemble: {spec.name} members={spec.members}")
 
     member_forecasts = []
+    member_rmse = []
     for member in spec.members:
         result = run_pipeline(records, model_name=member, target=target,
-                              level=level, train=True, evaluate=False,
+                              level=level, train=True, evaluate=True,
                               forecast=True, report=False)
-        member_forecasts.append(result["forecast"].__dict__
-                                if hasattr(result["forecast"], "__dict__")
-                                else {"projections": result["forecast"].projections})
+        fc = result["forecast"].__dict__ if hasattr(result["forecast"], "__dict__") \
+            else {"projections": result["forecast"].projections}
+        member_forecasts.append(fc)
+        rmse = result.get("evaluate", {}).ts_metrics.get("overall_rmse") if hasattr(result.get("evaluate"), "ts_metrics") \
+            else result.get("evaluate", {}).get("ts_metrics", {}).get("overall_rmse")
+        member_rmse.append(rmse if rmse is not None else float("nan"))
 
     ensemble_mgr = EnsembleManager(spec)
-    aggregated = ensemble_mgr.aggregate(member_forecasts)
-    logger.info(f"Ensemble aggregated: {len(aggregated.get('projections', []))} projections")
+    aggregated = ensemble_mgr.aggregate(member_forecasts, rmse_scores=member_rmse)
+    logger.info(f"Ensemble aggregated: {len(aggregated.get('projections', []))} projections, "
+                f"weights={aggregated.get('weights')}")
     return aggregated
 
 
@@ -104,11 +113,16 @@ def main(argv: Optional[List[str]] = None):
         records = json.load(f)
 
     if args.ensemble:
-        spec = EnsembleSpec(name=args.ensemble,
-                            members=[args.model_name, f"{args.model_name}_alt"],
-                            reconcile=True)
+        from models.catalog import ENSEMBLES
+        members = ENSEMBLES.get(args.ensemble)
+        if not members:
+            # treat the ensemble name as a single model name fallback
+            members = [args.model_name]
+        spec = EnsembleSpec(name=args.ensemble, members=members, reconcile=True)
         result = run_ensemble(records, spec, target=args.target, level=args.level)
-        print(f"[pipeline] ensemble result: {len(result.get('projections', []))} projections")
+        print(f"[pipeline] ensemble '{args.ensemble}' result: "
+              f"{len(result.get('projections', []))} projections, "
+              f"weights={result.get('weights')}")
     else:
         result = run_pipeline(records, model_name=args.model_name, target=args.target,
                                level=args.level, horizon_months=args.horizon_months,
