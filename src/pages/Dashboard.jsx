@@ -1,19 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, BarChart3, TrendingUp, Target, Layers, Loader2 } from "lucide-react";
+import { ShieldCheck, BarChart3, TrendingUp, Target, Loader2 } from "lucide-react";
 import { loadIncidents } from "@/lib/analytics/dataLoader";
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 import OverviewSection from "@/components/analytics/OverviewSection";
 import EdaSection from "@/components/analytics/EdaSection";
 import ForecastSection from "@/components/analytics/ForecastSection";
 import PredictionSection from "@/components/analytics/PredictionSection";
-import PipelineSection from "@/components/analytics/PipelineSection";
 
 const TABS = [
   { id: "overview", label: "نظرة عامة", icon: BarChart3 },
   { id: "eda", label: "تحليل البيانات", icon: BarChart3 },
   { id: "forecast", label: "التوقع الموسمي", icon: TrendingUp },
   { id: "prediction", label: "التنبؤ بالحدث القادم", icon: Target },
-  { id: "pipeline", label: "أنبوب MLOps", icon: Layers },
 ];
 
 export default function Dashboard() {
@@ -90,7 +88,6 @@ export default function Dashboard() {
         {activeTab === "eda" && <EdaSection incidents={incidents} />}
         {activeTab === "forecast" && <ForecastSection incidents={incidents} />}
         {activeTab === "prediction" && <PredictionSection incidents={incidents} />}
-        {activeTab === "pipeline" && <PipelineSection incidents={incidents} />}
       </main>
     </div>
   );
