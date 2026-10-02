@@ -18,7 +18,42 @@ function typeColor(t) {
   return Cesium.Color.GRAY;
 }
 
-// Priority color: green (low) -> amber (mid) -> red (high)
+/* ---------- PRIO-GRID (standard global 0.5° grid) ---------- */
+function prioidFromLatLng(lat, lng) {
+  const col = Math.floor((lng + 180) / 0.5) + 1;
+  const row = Math.floor((lat + 90) / 0.5) + 1;
+  return (row - 1) * 720 + col;
+}
+function cellBoundsFromPrioid(prioid) {
+  const row = Math.ceil(prioid / 720);
+  const col = prioid - (row - 1) * 720;
+  const west = -180 + (col - 1) * 0.5;
+  const south = -90 + (row - 1) * 0.5;
+  return { west, south, east: west + 0.5, north: south + 0.5, row, col };
+}
+function buildPrioGrid(incidents) {
+  const cells = {};
+  for (const inc of incidents) {
+    if (inc.latitude == null || inc.longitude == null) continue;
+    const id = prioidFromLatLng(inc.latitude, inc.longitude);
+    if (!cells[id]) cells[id] = { prioid: id, count: 0, detained: 0, types: {} };
+    const c = cells[id];
+    c.count += 1;
+    c.detained += inc.detained_count || 0;
+    c.types[inc.incident_type] = (c.types[inc.incident_type] || 0) + 1;
+  }
+  const arr = Object.values(cells);
+  const maxCount = Math.max(1, ...arr.map((c) => c.count));
+  for (const c of arr) {
+    c.bounds = cellBoundsFromPrioid(c.prioid);
+    c.risk = c.count / maxCount;
+    // Heatmap: hue 0 (red), saturation = risk, lightness 0.5, alpha 0.55
+    c.color = Cesium.Color.fromHsl(0.0, c.risk, 0.5, 0.55);
+  }
+  return arr.sort((a, b) => b.risk - a.risk);
+}
+
+/* ---------- Named border sectors ---------- */
 function priorityColor(t) {
   const low = Cesium.Color.fromBytes(34, 197, 94);
   const mid = Cesium.Color.fromBytes(245, 158, 11);
@@ -28,27 +63,22 @@ function priorityColor(t) {
     : Cesium.Color.lerp(mid, high, (t - 0.5) * 2, new Cesium.Color());
   return c.withAlpha(0.5);
 }
-
 function priorityLabel(t) {
   if (t >= 0.66) return "أولوية عالية";
   if (t >= 0.33) return "أولوية متوسطة";
   return "أولوية منخفضة";
 }
-
-// Named border sectors covering Oman's perimeter.
 const BORDER_SECTORS = [
   { id: "uae", name: "حدود الإمارات", west: 55.8, south: 24.2, east: 60.0, north: 26.6 },
   { id: "saudi", name: "حدود السعودية", west: 51.9, south: 19.5, east: 55.0, north: 24.2 },
   { id: "yemen", name: "حدود اليمن", west: 51.9, south: 16.5, east: 55.0, north: 19.5 },
   { id: "coast", name: "الساحل", west: 55.0, south: 16.5, east: 60.0, north: 24.2 },
 ];
-
 function sectorFor(lat, lng) {
   if (lat >= 24.2) return "uae";
   if (lat <= 19.5) return lng <= 55.0 ? "yemen" : "coast";
   return lng <= 55.0 ? "saudi" : "coast";
 }
-
 function buildBorderSectors(incidents) {
   const stats = {};
   for (const s of BORDER_SECTORS) stats[s.id] = { ...s, count: 0, detained: 0, types: {} };
@@ -73,17 +103,21 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
   const hasData = incidents && incidents.length > 0;
   const shown = hasData ? incidents.slice(0, 400) : [];
   const viewerRef = useRef(null);
-  const [view, setView] = useState("grid"); // "grid" | "points"
+  const [view, setView] = useState("prio"); // "prio" | "sectors" | "points"
 
   useEffect(() => {
     const viewer = viewerRef.current?.cesiumElement;
-    if (viewer) {
-      viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(OMAN.lon, OMAN.lat, OMAN.height),
-      });
-    }
+    if (!viewer) return;
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(OMAN.lon, OMAN.lat, OMAN.height),
+    });
+    // Drape grid on 3D terrain (mountains) like the PRIO-GRID reference.
+    try {
+      Cesium.createWorldTerrainAsync().then((tp) => { viewer.terrainProvider = tp; }).catch(() => {});
+    } catch (e) { /* fall back to ellipsoid */ }
   }, []);
 
+  const prioGrid = useMemo(() => (hasData ? buildPrioGrid(incidents) : []), [incidents, hasData]);
   const sectors = useMemo(() => (hasData ? buildBorderSectors(incidents) : []), [incidents, hasData]);
 
   const predCoords = useMemo(() => {
@@ -93,30 +127,22 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
     return rec ? { lon: rec.longitude, lat: rec.latitude } : null;
   }, [prediction, incidents]);
 
+  const btn = (active) => `px-3 py-1.5 rounded-lg text-sm ${active ? "bg-slate-900 text-white" : "bg-muted"}`;
+
   return (
     <div className="space-y-2" dir="rtl">
-      {/* View toggle + legend */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">
-          <button
-            onClick={() => setView("grid")}
-            className={`px-3 py-1.5 rounded-lg text-sm ${view === "grid" ? "bg-slate-900 text-white" : "bg-muted"}`}
-          >
-            قطاعات الحدود
-          </button>
-          <button
-            onClick={() => setView("points")}
-            className={`px-3 py-1.5 rounded-lg text-sm ${view === "points" ? "bg-slate-900 text-white" : "bg-muted"}`}
-          >
-            نقاط الحوادث
-          </button>
+          <button onClick={() => setView("prio")} className={btn(view === "prio")}>PRIO-GRID</button>
+          <button onClick={() => setView("sectors")} className={btn(view === "sectors")}>قطاعات الحدود</button>
+          <button onClick={() => setView("points")} className={btn(view === "points")}>نقاط الحوادث</button>
         </div>
-        {view === "grid" && sectors.length > 0 && (
+        {view === "prio" && prioGrid.length > 0 && (
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span>أولوية:</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgb(34,197,94)" }} />منخفضة</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgb(245,158,11)" }} />متوسطة</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgb(220,38,38)" }} />عالية</span>
+            <span>المخاطر:</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,20%,50%)" }} />منخفضة</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,60%,50%)" }} />متوسطة</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,100%,50%)" }} />عالية</span>
           </div>
         )}
       </div>
@@ -144,13 +170,54 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
           selectionIndicator={false}
           infoBox
         >
-          {view === "grid" && sectors.map((s) => (
+          {view === "prio" && prioGrid.map((cell) => (
+            <Entity
+              key={cell.prioid}
+              position={Cesium.Cartesian3.fromDegrees((cell.bounds.west + cell.bounds.east) / 2, (cell.bounds.south + cell.bounds.north) / 2)}
+              rectangle={{
+                coordinates: Cesium.Rectangle.fromDegrees(cell.bounds.west, cell.bounds.south, cell.bounds.east, cell.bounds.north),
+                material: cell.color,
+                classificationType: Cesium.ClassificationType.TERRAIN,
+                outline: true,
+                outlineColor: Cesium.Color.WHITE.withAlpha(0.25),
+                outlineWidth: 1,
+              }}
+              label={{
+                text: `${cell.prioid}\n${cell.count}`,
+                font: "12px sans-serif",
+                fillColor: Cesium.Color.WHITE,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 2,
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                showBackground: true,
+                backgroundColor: Cesium.Color.fromCssColorString("rgba(0,0,0,0.5)"),
+                backgroundPadding: new Cesium.Cartesian2(6, 5),
+                verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                scale: 0.8,
+              }}
+              description={`
+                <div dir="rtl" style="text-align:right;font-family:sans-serif">
+                  <strong>PRIO-GRID ${cell.prioid}</strong><br/>
+                  الخطر: ${(cell.risk * 100).toFixed(0)}%<br/>
+                  الحوادث: ${cell.count}<br/>
+                  المعتقلون: ${cell.detained}<br/>
+                  النطاق: ${cell.bounds.south.toFixed(1)}-${cell.bounds.north.toFixed(1)} خط عرض، ${cell.bounds.west.toFixed(1)}-${cell.bounds.east.toFixed(1)} طول<br/>
+                  ${Object.entries(cell.types).map(([t, n]) => `${t}: ${n}`).join(" | ")}
+                </div>
+              `}
+            />
+          ))}
+
+          {view === "sectors" && sectors.map((s) => (
             <Entity
               key={s.id}
               position={Cesium.Cartesian3.fromDegrees((s.west + s.east) / 2, (s.south + s.north) / 2)}
               rectangle={{
                 coordinates: Cesium.Rectangle.fromDegrees(s.west, s.south, s.east, s.north),
                 material: s.color,
+                classificationType: Cesium.ClassificationType.TERRAIN,
                 outline: true,
                 outlineColor: Cesium.Color.WHITE,
                 outlineWidth: 1,
@@ -174,7 +241,6 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                   <strong>${s.name}</strong> — ${priorityLabel(s.score)}<br/>
                   الحوادث: ${s.count}<br/>
                   المعتقلون: ${s.detained}<br/>
-                  النطاق: ${s.south.toFixed(1)}-${s.north.toFixed(1)} خط عرض، ${s.west.toFixed(1)}-${s.east.toFixed(1)} طول<br/>
                   ${Object.entries(s.types).map(([t, n]) => `${t}: ${n}`).join(" | ")}
                 </div>
               `}
@@ -224,7 +290,13 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
           )}
         </Viewer>
       </div>
-      {view === "grid" && sectors.length > 0 && (
+
+      {view === "prio" && prioGrid.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          PRIO-GRID معياري (0.5° × 0.5°) — {prioGrid.length} خلية نشطة ملوّنة حسب المخاطر ومسقطة على تضاريس ثلاثية الأبعاد. أعلى خلية: PRIO-{prioGrid[0].prioid} ({prioGrid[0].count} حادث).
+        </p>
+      )}
+      {view === "sectors" && sectors.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {sectors.map((s) => (
             <div key={s.id} className="rounded-lg border border-border bg-card p-2 text-center">
