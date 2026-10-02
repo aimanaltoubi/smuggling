@@ -25,7 +25,7 @@ export default function PredictionSection({ incidents }) {
     <div className="space-y-6" dir="rtl">
       {/* Predictive map (PRIO-GRID with forecast overlay) */}
       <div>
-        <h3 className="font-semibold mb-3">خريطة التنبؤ — PRIO-GRID</h3>
+        <h3 className="font-semibold mb-3">خريطة المخاطر والتنبؤ</h3>
         <IncidentMap incidents={incidents} prediction={prediction} />
         <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> تهريب</span>

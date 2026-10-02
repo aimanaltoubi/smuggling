@@ -182,7 +182,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
     <div className="space-y-2" dir="rtl">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">
-          <button onClick={() => setView("prio")} className={btn(view === "prio")}>PRIO-GRID</button>
+          <button onClick={() => setView("prio")} className={btn(view === "prio")}>خريطة المخاطر</button>
           <button onClick={() => setView("sectors")} className={btn(view === "sectors")}>قطاعات الحدود</button>
           <button onClick={() => setView("points")} className={btn(view === "points")}>نقاط الحوادث</button>
         </div>
@@ -247,7 +247,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                   outlineWidth: cell.isPeak ? 2 : 1,
                 }}
                 label={active ? {
-                  text: cell.isPeak ? `★ ${cell.prioid}` : `${cell.prioid}\n${cell.count}`,
+                  text: cell.isPeak ? `★ ${cell.governorate || "منطقة التنبؤ"}` : `${cell.governorate || "منطقة"}\n${cell.count} حادث`,
                   font: "12px sans-serif",
                   fillColor: Cesium.Color.WHITE,
                   outlineColor: Cesium.Color.BLACK,
@@ -263,13 +263,12 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                 } : undefined}
                 description={`
                   <div dir="rtl" style="text-align:right;font-family:sans-serif">
-                    <strong>PRIO-GRID ${cell.prioid}</strong>${cell.isPeak ? " ★ ذروة التنبؤ" : ""}<br/>
+                    <strong>${cell.governorate ? "منطقة " + cell.governorate : "منطقة غير محددة"}</strong>${cell.isPeak ? " ★ ذروة التنبؤ" : ""}<br/>
                     ${cell.isPredictionArea ? "منطقة تنبؤ محتملة<br/>" : ""}
-                    الخطر: ${(cell.baseRisk * 100).toFixed(0)}%${cell.govRisk ? ` | مخاطر المحافظة: ${(cell.govRisk * 100).toFixed(0)}%` : ""}<br/>
-                    الحوادث: ${cell.count}<br/>
+                    مستوى الخطر: ${(cell.baseRisk * 100).toFixed(0)}%${cell.govRisk ? ` | مخاطر المحافظة: ${(cell.govRisk * 100).toFixed(0)}%` : ""}<br/>
+                    عدد الحوادث السابقة: ${cell.count}<br/>
                     المعتقلون: ${cell.detained}<br/>
-                    المحافظة: ${cell.governorate || "غير محدد"}<br/>
-                    النطاق: ${cell.bounds.south.toFixed(1)}-${cell.bounds.north.toFixed(1)} خط عرض، ${cell.bounds.west.toFixed(1)}-${cell.bounds.east.toFixed(1)} طول
+                    المحافظة: ${cell.governorate || "غير محدد"}
                   </div>
                 `}
               />
@@ -359,7 +358,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
 
       {view === "prio" && prioGrid.length > 0 && activePrediction && (
         <p className="text-xs text-muted-foreground">
-          PRIO-GRID معياري (0.5° × 0.5°) يغطي سلطنة عمان بالكامل — {prioGrid.length} خلية. أفق التنبؤ الحالي: {horizon === "14" ? "أسبوعان" : "شهر"} ({activePrediction.forecastWindow.startLabel} ← {activePrediction.forecastWindow.endLabel}) — {activePrediction.when.totalExpectedIncidents} حادث متوقع، {activePrediction.howMany.expectedTotalDetained} معتقل. البرتقالية هي مناطق التنبؤ المحتملة (★ ذروة التنبؤ).
+          خريطة المخاطر تغطي سلطنة عمان بالكامل — {prioGrid.length} منطقة. أفق التنبؤ الحالي: {horizon === "14" ? "أسبوعان" : "شهر"} ({activePrediction.forecastWindow.startLabel} ← {activePrediction.forecastWindow.endLabel}) — {activePrediction.when.totalExpectedIncidents} حادث متوقع، {activePrediction.howMany.expectedTotalDetained} معتقل. المناطق البرتقالية هي مواقع التنبؤ المحتملة (★ أعلى منطقة خطورة).
         </p>
       )}
       {view === "sectors" && sectors.length > 0 && (
