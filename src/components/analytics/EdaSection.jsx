@@ -1,12 +1,38 @@
 import React from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { Database } from "lucide-react";
 import { runEDA } from "@/lib/analytics/eda";
+
+const MONTHS_AR = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+function fmtDate(d) {
+  if (!d) return "-";
+  return `${d.getDate()} ${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`;
+}
 
 export default function EdaSection({ incidents }) {
   const eda = runEDA(incidents);
+  const span = eda.summary.dateRange;
+  const daysSpanned = span.start && span.end ? Math.round((span.end - span.start) / (24 * 3600 * 1000)) + 1 : 0;
 
   return (
     <div className="space-y-6" dir="rtl">
+      {/* Data overview banner */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Database className="w-4 h-4 text-slate-700" />
+          <h3 className="font-semibold">نظرة عامة على البيانات</h3>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <OverviewItem label="إجمالي السجلات" value={eda.summary.totalIncidents} />
+          <OverviewItem label="إجمالي المعتقلين" value={eda.summary.totalDetained} />
+          <OverviewItem label="أول سجل" value={fmtDate(span.start)} />
+          <OverviewItem label="آخر سجل (نهاية البيانات)" value={fmtDate(span.end)} highlight />
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">
+          يمتد التحليل على {daysSpanned} يوماً من البيانات الفعلية — جميع المقاييس التالية محسوبة ديناميكياً من السجلات المحمّلة.
+        </p>
+      </div>
+
       {/* Data Quality */}
       <div className="rounded-xl border border-border bg-card p-4">
         <h3 className="font-semibold mb-3">جودة البيانات</h3>
@@ -106,6 +132,15 @@ function QualityItem({ label, value, warn }) {
     <div className={`rounded-lg p-3 ${warn ? "bg-red-50" : "bg-muted/50"}`}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`text-lg font-bold ${warn ? "text-red-600" : ""}`}>{value}</div>
+    </div>
+  );
+}
+
+function OverviewItem({ label, value, highlight }) {
+  return (
+    <div className={`rounded-lg p-3 ${highlight ? "bg-amber-50 border border-amber-200" : "bg-muted/50"}`}>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`text-base font-bold ${highlight ? "text-amber-700" : ""}`}>{value}</div>
     </div>
   );
 }

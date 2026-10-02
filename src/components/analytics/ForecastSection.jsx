@@ -1,6 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
+import { CalendarOff, TrendingUp } from "lucide-react";
 import { buildMonthlySeries, forecastSeries } from "@/lib/analytics/forecasting";
+
+const MONTHS_AR = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+function fmtDate(d) {
+  if (!d) return "-";
+  return `${d.getDate()} ${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`;
+}
 
 export default function ForecastSection({ incidents }) {
   const [metric, setMetric] = useState("incidents");
@@ -10,6 +17,13 @@ export default function ForecastSection({ incidents }) {
     if (typeFilter === "all") return incidents;
     return incidents.filter((i) => i.incident_type === typeFilter);
   }, [incidents, typeFilter]);
+
+  // Data endpoint: last actual incident date in the filtered set
+  const dataEndpoint = useMemo(() => {
+    const dates = filtered.map((i) => new Date(i.incident_date)).filter((d) => !isNaN(d));
+    if (!dates.length) return null;
+    return new Date(Math.max(...dates));
+  }, [filtered]);
 
   const { chartData, projection, params, residStd } = useMemo(() => {
     const monthly = buildMonthlySeries(filtered, metric);
@@ -52,6 +66,26 @@ export default function ForecastSection({ incidents }) {
           <button onClick={() => setTypeFilter("تسلل")} className={`px-3 py-1.5 rounded-lg text-sm ${typeFilter === "تسلل" ? "bg-blue-600 text-white" : "bg-muted"}`}>تسلل</button>
         </div>
       </div>
+
+      {/* Data endpoint banner */}
+      {dataEndpoint && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <div className="flex items-center gap-2">
+              <CalendarOff className="w-4 h-4 text-amber-600" />
+              <span className="text-muted-foreground">نهاية البيانات:</span>
+              <span className="font-medium text-amber-700">{fmtDate(dataEndpoint)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-amber-600" />
+              <span className="text-muted-foreground">يبدأ التوقع من الشهر التالي ويمتد 48 شهراً (4 سنوات) للأمام</span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            النموذج يبني السلسلة الشهرية من السجلات الفعلية حتى {fmtDate(dataEndpoint)} ثم يطبّق تنعيم هولت-وينترز الموسمي للتوقع.
+          </p>
+        </div>
+      )}
 
       {/* Chart */}
       <div className="rounded-xl border border-border bg-card p-4">
