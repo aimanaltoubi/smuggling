@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Upload, Download, Loader2, CheckCircle, AlertCircle, FileSpreadsheet } from "lucide-react";
+import { Upload, Download, Loader2, CheckCircle, AlertCircle, FileSpreadsheet, BarChart3 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const COLUMNS = [
@@ -15,7 +15,7 @@ const COLUMNS = [
   { name: "details", type: "نص", required: false, example: "—" },
 ];
 
-export default function DataUploadSection({ onImported }) {
+export default function DataUploadSection({ onImported, onGoToEDA }) {
   const [file, setFile] = useState(null);
   const [replaceExisting, setReplaceExisting] = useState(false);
   const [status, setStatus] = useState("idle");
@@ -156,6 +156,15 @@ export default function DataUploadSection({ onImported }) {
             تم استيراد {result.imported} سجل{result.failed ? `، وفشل ${result.failed} سجل` : ""}.
             {result.replaced ? " تم استبدال البيانات السابقة." : ""}
           </div>
+          {onGoToEDA && (
+            <button
+              onClick={onGoToEDA}
+              className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700"
+            >
+              <BarChart3 className="w-4 h-4" />
+              تحليل البيانات (EDA)
+            </button>
+          )}
         </div>
       )}
 
