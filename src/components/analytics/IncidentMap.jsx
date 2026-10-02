@@ -1,75 +1,110 @@
-import React from "react";
-import { MapContainer, TileLayer, CircleMarker, Popup, Marker, Polyline } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import L from "leaflet";
+import React, { useEffect, useMemo, useRef } from "react";
+import { Viewer, Entity } from "resium";
+import Cesium from "@/lib/cesiumConfig";
 
-// Oman center
-const OMAN_CENTER = [21.5, 56.0];
+const OMAN = { lon: 56.0, lat: 21.5, height: 900000 };
+
+const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+function fmtDate(d) {
+  if (!d) return "-";
+  const dt = d instanceof Date ? d : new Date(d);
+  if (isNaN(dt)) return "-";
+  return `${dt.getDate()} ${MONTHS_AR[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+
+function typeColor(t) {
+  if (t === "تهريب") return Cesium.Color.RED;
+  if (t === "تسلل") return Cesium.Color.ROYALBLUE;
+  return Cesium.Color.GRAY;
+}
 
 export default function IncidentMap({ incidents, prediction, height = 420 }) {
   const hasData = incidents && incidents.length > 0;
-  // Sample incidents if too many for performance
   const shown = hasData ? incidents.slice(0, 400) : [];
+  const viewerRef = useRef(null);
 
-  const typeColor = { "تهريب": "#dc2626", "تسلل": "#2563eb" };
+  // Set the initial camera view over Oman once the viewer mounts.
+  useEffect(() => {
+    const viewer = viewerRef.current?.cesiumElement;
+    if (viewer) {
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(OMAN.lon, OMAN.lat, OMAN.height),
+      });
+    }
+  }, []);
 
-  // Prediction marker icon
-  const predIcon = prediction
-    ? L.divIcon({
-        className: "prediction-marker",
-        html: `<div style="width:18px;height:18px;background:#f59e0b;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(245,158,11,0.4)"></div>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-      })
-    : null;
-
-  // Find coordinates for predicted governorate (use first incident in that governorate)
-  const predCoords = prediction
-    ? (() => {
-        const g = prediction.where.governorate;
-        const rec = incidents.find((i) => i.governorate === g);
-        return rec ? [rec.latitude, rec.longitude] : null;
-      })()
-    : null;
+  const predCoords = useMemo(() => {
+    if (!prediction) return null;
+    const g = prediction.where.governorate;
+    const rec = incidents.find((i) => i.governorate === g);
+    return rec ? { lon: rec.longitude, lat: rec.latitude } : null;
+  }, [prediction, incidents]);
 
   return (
-    <div style={{ height, borderRadius: 12, overflow: "hidden", border: "1px solid hsl(var(--border))" }}>
-      <MapContainer center={OMAN_CENTER} zoom={6} style={{ height: "100%", width: "100%" }}>
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; OpenStreetMap'
-        />
+    <div
+      style={{
+        height,
+        position: "relative",
+        borderRadius: 12,
+        overflow: "hidden",
+        border: "1px solid hsl(var(--border))",
+      }}
+    >
+      <Viewer
+        ref={viewerRef}
+        full
+        baseLayerPicker={false}
+        geocoder={false}
+        homeButton={false}
+        navigationHelpButton={false}
+        sceneModePicker={false}
+        timeline={false}
+        animation={false}
+        fullscreenButton={false}
+        selectionIndicator={false}
+        infoBox
+      >
         {shown.map((inc, idx) => (
-          <CircleMarker
+          <Entity
             key={idx}
-            center={[inc.latitude, inc.longitude]}
-            radius={4 + Math.min(6, (inc.detained_count || 1) / 2)}
-            pathOptions={{ color: typeColor[inc.incident_type] || "#666", fillColor: typeColor[inc.incident_type] || "#666", fillOpacity: 0.6 }}
-          >
-            <Popup>
-              <div style={{ direction: "rtl", textAlign: "right" }}>
-                <strong>{inc.incident_type}</strong><br />
-                {inc.location_name} - {inc.governorate}<br />
-                التاريخ: {inc.incident_date}<br />
-                المعتقلون: {inc.detained_count}
+            position={Cesium.Cartesian3.fromDegrees(inc.longitude, inc.latitude)}
+            point={{
+              pixelSize: 6 + Math.min(8, (inc.detained_count || 1) / 2),
+              color: typeColor(inc.incident_type),
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 1,
+            }}
+            description={`
+              <div dir="rtl" style="text-align:right;font-family:sans-serif">
+                <strong>${inc.incident_type}</strong><br/>
+                ${inc.location_name} - ${inc.governorate}<br/>
+                التاريخ: ${fmtDate(inc.incident_date)}<br/>
+                المعتقلون: ${inc.detained_count}
               </div>
-            </Popup>
-          </CircleMarker>
+            `}
+          />
         ))}
-        {prediction && predCoords && predIcon && (
-          <Marker position={predCoords} icon={predIcon}>
-            <Popup>
-              <div style={{ direction: "rtl", textAlign: "right" }}>
-                <strong>التنبؤ: الحدث القادم</strong><br />
-                المحافظة: {prediction.where.governorate}<br />
-                الفترة: {prediction.forecastWindow.startLabel} ← {prediction.forecastWindow.endLabel}<br />
-                الحوادث المتوقعة: {prediction.when.totalExpectedIncidents}<br />
-                المعتقلون المتوقعون: {prediction.howMany.expectedTotalDetained}
+        {prediction && predCoords && (
+          <Entity
+            position={Cesium.Cartesian3.fromDegrees(predCoords.lon, predCoords.lat)}
+            point={{
+              pixelSize: 16,
+              color: Cesium.Color.ORANGE,
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2,
+            }}
+            description={`
+              <div dir="rtl" style="text-align:right;font-family:sans-serif">
+                <strong>التنبؤ: الحدث القادم</strong><br/>
+                المحافظة: ${prediction.where.governorate}<br/>
+                الفترة: ${prediction.forecastWindow.startLabel} ← ${prediction.forecastWindow.endLabel}<br/>
+                الحوادث المتوقعة: ${prediction.when.totalExpectedIncidents}<br/>
+                المعتقلون المتوقعون: ${prediction.howMany.expectedTotalDetained}
               </div>
-            </Popup>
-          </Marker>
+            `}
+          />
         )}
-      </MapContainer>
+      </Viewer>
     </div>
   );
 }
