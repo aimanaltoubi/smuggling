@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Viewer, Entity } from "resium";
 import Cesium from "@/lib/cesiumConfig";
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
+import MapOverlay from "./MapOverlay";
 
 const OMAN = { lon: 56.0, lat: 21.5, height: 900000 };
 
@@ -176,6 +177,51 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
     return rec ? { lon: rec.longitude, lat: rec.latitude } : null;
   }, [activePrediction, incidents]);
 
+  const overlayItems = useMemo(() => {
+    if (view === "sectors") {
+      return sectors.map((s) => ({
+        id: `sector-${s.id}`,
+        lon: (s.west + s.east) / 2,
+        lat: (s.south + s.north) / 2,
+        content: (
+          <div className="px-2.5 py-1 rounded-md bg-black/75 text-white text-xs font-semibold whitespace-nowrap border border-white/25 shadow-lg">
+            {s.name} — {s.count} حادث
+          </div>
+        ),
+      }));
+    }
+    if (view === "prio") {
+      const items = [];
+      const peak = prioGrid.find((c) => c.isPeak);
+      if (peak) {
+        items.push({
+          id: `peak-${peak.prioid}`,
+          lon: (peak.bounds.west + peak.bounds.east) / 2,
+          lat: (peak.bounds.south + peak.bounds.north) / 2,
+          content: (
+            <div className="px-2.5 py-1 rounded-md bg-amber-700/90 text-white text-xs font-bold whitespace-nowrap border border-white/50 shadow-lg">
+              ★ {peak.governorate || "منطقة التنبؤ"}
+            </div>
+          ),
+        });
+      }
+      if (predCoords && activePrediction) {
+        items.push({
+          id: "pred-point",
+          lon: predCoords.lon,
+          lat: predCoords.lat,
+          content: (
+            <div className="px-2.5 py-1 rounded-md bg-orange-600/90 text-white text-xs font-bold whitespace-nowrap border border-white/50 shadow-lg">
+              التنبؤ: {activePrediction.where.governorate}
+            </div>
+          ),
+        });
+      }
+      return items;
+    }
+    return [];
+  }, [view, sectors, prioGrid, predCoords, activePrediction]);
+
   const btn = (active) => `px-3 py-1.5 rounded-lg text-sm ${active ? "bg-slate-900 text-white" : "bg-muted"}`;
 
   return (
@@ -228,9 +274,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
           selectionIndicator={false}
           infoBox
         >
-          {view === "prio" && prioGrid.map((cell) => {
-            const active = cell.count > 0 || cell.isPredictionArea;
-            return (
+          {view === "prio" && prioGrid.map((cell) => (
               <Entity
                 key={cell.prioid}
                 position={Cesium.Cartesian3.fromDegrees((cell.bounds.west + cell.bounds.east) / 2, (cell.bounds.south + cell.bounds.north) / 2)}
@@ -246,21 +290,6 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                       : Cesium.Color.WHITE.withAlpha(0.22),
                   outlineWidth: cell.isPeak ? 2 : 1,
                 }}
-                label={active ? {
-                  text: cell.isPeak ? `★ ${cell.governorate || "منطقة التنبؤ"}` : `${cell.governorate || "منطقة"} — ${cell.count} حادث`,
-                  font: "12px sans-serif",
-                  fillColor: Cesium.Color.WHITE,
-                  outlineColor: Cesium.Color.BLACK,
-                  outlineWidth: 2,
-                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                  showBackground: true,
-                  backgroundColor: Cesium.Color.fromCssColorString(cell.isPeak ? "rgba(180,83,9,0.85)" : "rgba(0,0,0,0.5)"),
-                  backgroundPadding: new Cesium.Cartesian2(6, 5),
-                  verticalOrigin: Cesium.VerticalOrigin.CENTER,
-                  horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-                  heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-                  scale: cell.isPeak ? 0.95 : 0.75,
-                } : undefined}
                 description={`
                   <div dir="rtl" style="text-align:right;font-family:sans-serif">
                     <strong>${cell.governorate ? "منطقة " + cell.governorate : "منطقة غير محددة"}</strong>${cell.isPeak ? " ★ ذروة التنبؤ" : ""}<br/>
@@ -272,8 +301,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                   </div>
                 `}
               />
-            );
-          })}
+            ))}
 
           {view === "sectors" && sectors.map((s) => (
             <Entity
@@ -286,20 +314,6 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
                 outline: true,
                 outlineColor: Cesium.Color.WHITE,
                 outlineWidth: 1,
-              }}
-              label={{
-                text: `${s.name} — ${s.count} حادث`,
-                font: "14px sans-serif",
-                fillColor: Cesium.Color.WHITE,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 3,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                showBackground: true,
-                backgroundColor: Cesium.Color.fromCssColorString("rgba(0,0,0,0.55)"),
-                backgroundPadding: new Cesium.Cartesian2(10, 8),
-                verticalOrigin: Cesium.VerticalOrigin.CENTER,
-                horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
               }}
               description={`
                 <div dir="rtl" style="text-align:right;font-family:sans-serif">
@@ -354,6 +368,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
             />
           )}
         </Viewer>
+        <MapOverlay viewerRef={viewerRef} items={overlayItems} />
       </div>
 
       {view === "prio" && prioGrid.length > 0 && activePrediction && (
