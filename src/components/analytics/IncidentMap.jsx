@@ -62,8 +62,9 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
               <div style={{ direction: "rtl", textAlign: "right" }}>
                 <strong>التنبؤ: الحدث القادم</strong><br />
                 المحافظة: {prediction.where.governorate}<br />
-                الفترة: {prediction.when.period}<br />
-                العدد المتوقع: {prediction.howMany.expectedTotalDetained}
+                الفترة: {prediction.forecastWindow.startLabel} ← {prediction.forecastWindow.endLabel}<br />
+                الحوادث المتوقعة: {prediction.when.totalExpectedIncidents}<br />
+                المعتقلون المتوقعون: {prediction.howMany.expectedTotalDetained}
               </div>
             </Popup>
           </Marker>

@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
-import { MapPin, CalendarClock, Users, Sparkles } from "lucide-react";
+import { MapPin, CalendarClock, Users, Sparkles, CalendarOff, Activity } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { predictNextEvent } from "@/lib/analytics/prediction";
 
 export default function PredictionSection({ incidents }) {
@@ -12,30 +13,58 @@ export default function PredictionSection({ incidents }) {
     return <div className="text-muted-foreground" dir="rtl">لا توجد بيانات كافية للتنبؤ</div>;
   }
 
-  const confColor = { "عالية": "text-green-600 bg-green-50", "متوسطة": "text-amber-600 bg-amber-50", "منخفضة": "text-red-600 bg-red-50" };
+  const confColor = { عالية: "text-green-600 bg-green-50", متوسطة: "text-amber-600 bg-amber-50", منخفضة: "text-red-600 bg-red-50" };
+  const dailyData = prediction.when.dailyBreakdown.map((d) => ({
+    day: `${d.date.getDate()}/${d.date.getMonth() + 1}`,
+    expected: +d.expected.toFixed(2),
+    isPeak: d.label === prediction.when.peakDay.label,
+  }));
 
   return (
     <div className="space-y-6" dir="rtl">
+      {/* Data endpoint banner */}
       <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-        <div className="flex items-center gap-2 text-amber-700 mb-1">
+        <div className="flex items-center gap-2 text-amber-700 mb-2">
           <Sparkles className="w-4 h-4" />
-          <span className="text-sm font-medium">تنبؤ تحليلي بالحدث القادم</span>
+          <span className="text-sm font-medium">تنبؤ تكتيكي ديناميكي بالحدث القادم</span>
         </div>
-        <p className="text-xs text-muted-foreground">يجمع النموذج بين التوقع الموسمي (متى وكم) ونموذج المخاطر المكانية (أين)</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div className="flex items-start gap-2">
+            <CalendarOff className="w-4 h-4 text-amber-600 mt-0.5" />
+            <div>
+              <div className="text-muted-foreground text-xs">آخر سجل في البيانات</div>
+              <div className="font-medium">{prediction.dataEndpoint.lastDateLabel}</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <CalendarClock className="w-4 h-4 text-amber-600 mt-0.5" />
+            <div>
+              <div className="text-muted-foreground text-xs">فترة التنبؤ ({prediction.forecastWindow.days} يوماً)</div>
+              <div className="font-medium">{prediction.forecastWindow.startLabel} ← {prediction.forecastWindow.endLabel}</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Activity className="w-4 h-4 text-amber-600 mt-0.5" />
+            <div>
+              <div className="text-muted-foreground text-xs">معامل الاتجاه (آخر 30 يوم / التاريخي)</div>
+              <div className="font-medium">{prediction.model.trendFactor}× — {prediction.model.recentDailyRate} مقابل {prediction.model.overallDailyRate} حادث/يوم</div>
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">{prediction.reasoning.endpoint}</p>
       </div>
 
+      {/* Three prediction cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* WHEN */}
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
             <CalendarClock className="w-4 h-4" />
-            <span>متى</span>
+            <span>متى (خلال {prediction.forecastWindow.days} يوماً)</span>
           </div>
-          <div className="text-2xl font-bold">{prediction.when.period}</div>
-          <div className="text-sm text-muted-foreground mt-1">حوادث متوقعة: {prediction.when.expectedIncidents}</div>
-          <div className={`inline-block px-2 py-0.5 rounded text-xs mt-2 ${confColor[prediction.when.confidence]}`}>
-            ثقة: {prediction.when.confidence}
-          </div>
+          <div className="text-2xl font-bold">{prediction.when.totalExpectedIncidents} <span className="text-sm font-normal text-muted-foreground">حادث متوقع</span></div>
+          <div className="text-sm text-muted-foreground mt-1">الذروة: {prediction.when.peakDay.label}</div>
+          <div className="text-xs text-muted-foreground mt-1">≈ {prediction.when.peakDay.expected} حادث في يوم الذروة</div>
         </div>
 
         {/* WHERE */}
@@ -55,11 +84,30 @@ export default function PredictionSection({ incidents }) {
             <Users className="w-4 h-4" />
             <span>كم</span>
           </div>
-          <div className="text-2xl font-bold">{prediction.howMany.expectedTotalDetained}</div>
-          <div className="text-sm text-muted-foreground mt-1">معتقل متوقع (إجمالي)</div>
-          <div className="text-xs text-muted-foreground mt-2">
-            النوع: {prediction.howMany.predictedType} | ~{prediction.howMany.expectedDetainedPerIncident} لكل حادث
-          </div>
+          <div className="text-2xl font-bold">{prediction.howMany.expectedTotalDetained} <span className="text-sm font-normal text-muted-foreground">معتقل متوقع</span></div>
+          <div className="text-sm text-muted-foreground mt-1">النوع: {prediction.howMany.predictedType}</div>
+          <div className="text-xs text-muted-foreground mt-2">~{prediction.howMany.expectedDetainedPerIncident} لكل حادث</div>
+        </div>
+      </div>
+
+      {/* Daily breakdown chart */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="font-semibold mb-1">التوقع اليومي للحوادث</h3>
+        <p className="text-xs text-muted-foreground mb-3">يوم الأسبوع × الموسم الشهري × الاتجاه الأخير — اليوم الأبرز باللون البرتقالي</p>
+        <div style={{ direction: "ltr", height: 260 }}>
+          <ResponsiveContainer>
+            <BarChart data={dailyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="expected" name="حوادث متوقعة" radius={[3, 3, 0, 0]}>
+                {dailyData.map((entry, idx) => (
+                  <Cell key={idx} fill={entry.isPeak ? "#f59e0b" : "#0f172a"} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
@@ -67,7 +115,9 @@ export default function PredictionSection({ incidents }) {
       <div className="rounded-xl border border-border bg-card p-4">
         <h3 className="font-semibold mb-3">التفسير</h3>
         <div className="space-y-2 text-sm">
-          <ReasonRow label="الموسمية" text={prediction.reasoning.seasonal} />
+          <ReasonRow label="نقطة نهاية البيانات" text={prediction.reasoning.endpoint} />
+          <ReasonRow label="المعدل والاتجاه" text={prediction.reasoning.rate} />
+          <ReasonRow label="الموسمية اليومية" text={prediction.reasoning.seasonal} />
           <ReasonRow label="المخاطر المكانية" text={prediction.reasoning.spatial} />
           <ReasonRow label="نوع الحادث" text={prediction.reasoning.typeReason} />
         </div>
@@ -97,7 +147,7 @@ export default function PredictionSection({ incidents }) {
 function ReasonRow({ label, text }) {
   return (
     <div className="flex gap-2 py-1.5 border-b border-border/50 last:border-0">
-      <span className="font-medium min-w-[100px] text-muted-foreground">{label}:</span>
+      <span className="font-medium min-w-[120px] text-muted-foreground">{label}:</span>
       <span>{text}</span>
     </div>
   );
