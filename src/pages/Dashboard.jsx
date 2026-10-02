@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, BarChart3, TrendingUp, Target, Loader2, Upload } from "lucide-react";
+import { ShieldCheck, BarChart3, TrendingUp, Target, Loader2, Upload, ClipboardCheck } from "lucide-react";
 import { loadIncidents } from "@/lib/analytics/dataLoader";
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 import OverviewSection from "@/components/analytics/OverviewSection";
@@ -7,6 +7,7 @@ import EdaSection from "@/components/analytics/EdaSection";
 import ForecastSection from "@/components/analytics/ForecastSection";
 import PredictionSection from "@/components/analytics/PredictionSection";
 import DataUploadSection from "@/components/analytics/DataUploadSection";
+import EvaluationSection from "@/components/analytics/EvaluationSection";
 
 const TABS = [
   { id: "overview", label: "نظرة عامة", icon: BarChart3 },
@@ -14,6 +15,7 @@ const TABS = [
   { id: "forecast", label: "التوقع الموسمي", icon: TrendingUp },
   { id: "prediction", label: "التنبؤ بالحدث القادم", icon: Target },
   { id: "upload", label: "رفع البيانات", icon: Upload },
+  { id: "evaluation", label: "تقييم النموذج", icon: ClipboardCheck },
 ];
 
 export default function Dashboard() {
@@ -92,6 +94,7 @@ export default function Dashboard() {
         {activeTab === "forecast" && <ForecastSection incidents={incidents} />}
         {activeTab === "prediction" && <PredictionSection incidents={incidents} />}
         {activeTab === "upload" && <DataUploadSection onImported={() => setReloadKey((k) => k + 1)} onGoToEDA={() => setActiveTab("eda")} />}
+        {activeTab === "evaluation" && <EvaluationSection />}
       </main>
     </div>
   );
