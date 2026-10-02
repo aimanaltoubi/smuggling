@@ -334,7 +334,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
             />
           ))}
 
-          {activePrediction && predCoords && (
+          {view === "prio" && activePrediction && predCoords && (
             <Entity
               position={Cesium.Cartesian3.fromDegrees(predCoords.lon, predCoords.lat)}
               point={{
