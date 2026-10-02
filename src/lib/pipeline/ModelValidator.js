@@ -2,7 +2,13 @@
  * ModelValidator — structural & logical integrity checks (sniffer pattern, ADR-041).
  */
 
+import { MODEL_REGISTRY } from "./ModelCatalog";
+
 export default class ModelValidator {
+  _isKnownModel(name) {
+    return name in MODEL_REGISTRY;
+  }
+
   validateConfig(config) {
     const issues = [];
     if (!config.meta.target) issues.push("meta missing required key: target");
@@ -11,7 +17,7 @@ export default class ModelValidator {
     const p = config.partitions;
     if (p.train_start > p.train_end) issues.push("train_start > train_end");
     if (p.forecast_start <= p.validation_end) issues.push("forecast_start must follow validation_end");
-    if (!config.model_name.includes("-")) issues.push(`model_name should follow org-prefix convention, got ${config.model_name}`);
+    if (!this._isKnownModel(config.model_name)) issues.push(`unknown model_name: ${config.model_name} (not in ModelCatalog)`);
 
     if (issues.length) throw new Error("Configuration validation failed: " + issues.join("; "));
     return issues;
