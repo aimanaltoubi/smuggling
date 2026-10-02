@@ -62,7 +62,7 @@ function aggregateByMonth(projections) {
  * projection with confidence intervals.
  */
 export function pipelineStrategicForecast(incidents, opts = {}) {
-  const { target = "incidents", level = "governorate", horizon = 48, model_name = "SeasonalClimatologyModel" } = opts;
+  const { target = "incidents", level = "governorate", horizon = 48, model_name = "TrendSeasonalModel" } = opts;
   const pipelineTarget = target === "detained" ? "detained_count" : "incidents";
 
   const result = runPipeline(incidents, {
@@ -90,7 +90,7 @@ export function pipelineStrategicForecast(incidents, opts = {}) {
  * in the shape PredictionSection and IncidentMap expect.
  */
 export function pipelineTacticalPrediction(incidents, opts = {}) {
-  const { horizonDays = 14, model_name = "SeasonalClimatologyModel" } = opts;
+  const { horizonDays = 14, model_name = "TrendSeasonalModel" } = opts;
 
   const incResult = runPipeline(incidents, { model_name, target: "incidents", level: "governorate", horizon_months: 12, train: true, evaluate: true, forecast: true, report: false });
   const detResult = runPipeline(incidents, { model_name, target: "detained_count", level: "governorate", horizon_months: 12, train: true, evaluate: true, forecast: true, report: false });
@@ -110,7 +110,15 @@ export function pipelineTacticalPrediction(incidents, opts = {}) {
   const forecastMonths = [...new Set(incProjections.map((p) => p.month_id))].sort((a, b) => a - b);
   const firstMonth = forecastMonths[0];
   const firstMonthIncidents = incProjections.filter((p) => p.month_id === firstMonth).reduce((s, p) => s + (p.value || 0), 0);
-  const dailyRate = firstMonthIncidents / 30;
+  const pipelineDailyRate = firstMonthIncidents / 30;
+
+  // Recent momentum: actual incidents in the last 30 days
+  const recent30Start = new Date(dataEndDate.getTime() - 30 * DAY_MS);
+  const recent30Count = valid.filter((i) => new Date(i.incident_date) >= recent30Start).length;
+  const recentDailyRate = recent30Count / 30;
+
+  // Blend pipeline rate (seasonality + trend) with recent momentum
+  const dailyRate = 0.6 * pipelineDailyRate + 0.4 * recentDailyRate;
 
   // Daily breakdown (flat from pipeline monthly rate)
   const dailyForecast = [];

@@ -10,7 +10,7 @@
  * Reference: https://github.com/views-platform/views-models
  */
 
-import { ZeroModel, LocfModel, AverageModel, ConflictologyModel, MixtureBaseline, SeasonalClimatologyModel } from "./Baselines";
+import { ZeroModel, LocfModel, AverageModel, ConflictologyModel, MixtureBaseline, SeasonalClimatologyModel, TrendSeasonalModel } from "./Baselines";
 
 export const MODEL_REGISTRY = {
   // --- baselines (views-baseline) — available in-browser ---
@@ -20,6 +20,7 @@ export const MODEL_REGISTRY = {
   ConflictologyModel:          { family: "baseline", available: true,  needsPython: false },
   MixtureBaseline:             { family: "baseline", available: true,  needsPython: false },
   SeasonalClimatologyModel:     { family: "baseline", available: true,  needsPython: false },
+  TrendSeasonalModel:           { family: "baseline", available: true,  needsPython: false },
   ParametricConflictology:     { family: "baseline", available: false, needsPython: true },
   ParametricHurdleConflictology: { family: "baseline", available: false, needsPython: true },
   // --- stepshifters (views-stepshifter) — Python only (Darts/sklearn/lightgbm/xgboost) ---
@@ -75,6 +76,7 @@ export function getModel(name, target, partition, loa = "pgm", hp = {}) {
     case "ConflictologyModel": return new ConflictologyModel({ targets, windowMonths: hp.window_months || 24, partition, loa, nSamples: hp.n_samples || 100, seed: hp.seed || 42 });
     case "MixtureBaseline": return new MixtureBaseline({ targets, windowMonths: hp.window_months || 24, lambdaMix: hp.lambda_mix ?? 0.3, nSamples: hp.n_samples || 100, partition, loa, seed: hp.seed || 42 });
     case "SeasonalClimatologyModel": return new SeasonalClimatologyModel({ targets, windowMonths: hp.window_months || 36, partition, loa });
+    case "TrendSeasonalModel": return new TrendSeasonalModel({ targets, windowMonths: hp.window_months || 36, partition, loa, momentumWeight: hp.momentum_weight ?? 0.4 });
     default: throw new Error(`Model '${name}' not yet implemented in JS`);
   }
 }
