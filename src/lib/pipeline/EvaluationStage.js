@@ -35,7 +35,7 @@ export default class EvaluationStage {
   execute(ctx, trainOutput) {
     const config = ctx.config;
     const valRows = ctx.data.partitions.validation;
-    const trainRows = ctx.data.partitions.train;
+    const trainRows = [...ctx.data.partitions.train, ...ctx.data.partitions.calibration];
     const target = config.target;
     const level = config.level;
     const loa = level === "priogrid" ? "pgm" : "cm";

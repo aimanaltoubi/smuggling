@@ -1,0 +1,5 @@
+import React from 'react';
+export default function EvaluationSources() {
+  const sources = [ ['التحقق الزمني المتحرك، FPP3', 'https://otexts.com/fpp3/tscv.html'], ['قياس الخطأ وMASE، FPP3', 'https://otexts.com/fpp3/accuracy.html'], ['مقارنة تجميع التوقعات، FPP3', 'https://otexts.com/fpp3/combinations.html'], ['فصل اختيار المعلمات عن الاختبار الخارجي، scikit-learn', 'https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html'] ];
+  return <section className="rounded-xl border border-border bg-card p-5 space-y-2"><h3 className="font-semibold">المراجع والمنهجية</h3>{sources.map(([text, url]) => <a className="block text-sm text-primary underline" target="_blank" rel="noreferrer" href={url} key={url}>{text}</a>)}<p className="text-xs text-muted-foreground">المنهج مستند إلى المراجع، لكن أحجام النوافذ وحدود التحسن خيارات تنفيذية وليست ضمانات علمية لدقة هذا النظام.</p></section>;
+}

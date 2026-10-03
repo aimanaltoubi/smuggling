@@ -336,7 +336,7 @@ export class TrendSeasonalModel {
       const past = arr.filter((c) => c.month_id <= this.trainEnd);
       if (!past.length) continue;
 
-      const sorted = [...arr].sort((a, b) => a.month_id - b.month_id);
+      const sorted = [...past].sort((a, b) => a.month_id - b.month_id);
       const window = sorted.slice(-this.windowMonths);
 
       // Calendar-month climatology
@@ -441,7 +441,7 @@ export class AdaptiveTrendModel {
     for (const [ent, arr] of byEnt) {
       const past = arr.filter((c) => c.month_id <= this.trainEnd);
       if (!past.length) continue;
-      const sorted = [...arr].sort((a, b) => a.month_id - b.month_id);
+      const sorted = [...past].sort((a, b) => a.month_id - b.month_id);
       const window = sorted.slice(-this.windowMonths);
 
       // 1. Calendar-month climatology (seasonal component)

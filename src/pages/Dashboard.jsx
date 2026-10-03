@@ -94,7 +94,7 @@ export default function Dashboard() {
         {activeTab === "forecast" && <ForecastSection incidents={incidents} />}
         {activeTab === "prediction" && <PredictionSection incidents={incidents} />}
         {activeTab === "upload" && <DataUploadSection onImported={() => setReloadKey((k) => k + 1)} onGoToEDA={() => setActiveTab("eda")} />}
-        {activeTab === "evaluation" && <EvaluationSection />}
+        {activeTab === "evaluation" && <EvaluationSection incidents={incidents} />}
       </main>
     </div>
   );

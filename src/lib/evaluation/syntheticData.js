@@ -52,6 +52,8 @@ export function generateSyntheticIncidents(opts = {}) {
     seed = 42,
     trendPerMonth = 0.02,
     smugglingRatio = 0.60,
+    noise = 0, rateScale = 1, shockMultiplier = 1, shiftMonth = 30,
+    spatialShift = false, typeShift = false,
   } = opts;
 
   const rng = makeRng(seed);
@@ -69,13 +71,16 @@ export function generateSyntheticIncidents(opts = {}) {
 
     for (const gov of GOV_PROFILES) {
       const seasonalMult = SEASONAL[month];
-      const trendMult = 1 + trendPerMonth * monthIdx;
-      const monthlyRate = gov.baseRate * seasonalMult * trendMult;
+      const trendMult = Math.max(0.05, 1 + trendPerMonth * monthIdx);
+      const shifted = monthIdx >= shiftMonth;
+      const spatial = spatialShift && shifted ? (gov.name === 'مسندم' ? 5 : 0.6) : 1;
+      const disturbance = noise ? Math.exp(noise * (2 * rng() - 1)) : 1;
+      const monthlyRate = gov.baseRate * seasonalMult * trendMult * rateScale * spatial * disturbance * (shifted ? shockMultiplier : 1);
       const dailyRate = monthlyRate / 30;
       const count = poisson(rng, dailyRate);
 
       for (let i = 0; i < count; i++) {
-        const isSmuggling = rng() < smugglingRatio;
+        const isSmuggling = rng() < (typeShift && monthIdx >= shiftMonth ? 1 - smugglingRatio : smugglingRatio);
         const detained = Math.max(1, poisson(rng, 2) + 1);
         incidents.push({
           incident_id: `SYN-${String(id++).padStart(5, "0")}`,

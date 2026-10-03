@@ -21,6 +21,16 @@ export function rowsToPanel(rows, target = "detained_count", level = "governorat
     cell.incidents += 1;
     cell.detained_count += r.detained_count || 0;
   }
+  // Absence means zero only within the supplied observed reporting window.
+  const observed = [...map.values()];
+  const months = observed.map(c => c.month_id);
+  const first = Math.min(...months), last = Math.max(...months);
+  for (const entity_id of new Set(observed.map(c => c.entity_id))) {
+    for (let month_id = first; month_id <= last; month_id++) {
+      const key = `${month_id}::${entity_id}`;
+      if (!map.has(key)) map.set(key, { month_id, entity_id, incidents: 0, detained_count: 0 });
+    }
+  }
   const cells = [...map.values()].sort(
     (a, b) => a.month_id - b.month_id || String(a.entity_id).localeCompare(String(b.entity_id))
   );

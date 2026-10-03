@@ -12,7 +12,10 @@
 
 import { ZeroModel, LocfModel, AverageModel, ConflictologyModel, MixtureBaseline, SeasonalClimatologyModel, TrendSeasonalModel, AdaptiveTrendModel } from "./Baselines";
 
+import AutoTunedModel from '@/lib/pipeline/AutoTunedModel';
+
 export const MODEL_REGISTRY = {
+  AutoTunedModel: { family: 'validated-selection', available: true, needsPython: false },
   // --- baselines (views-baseline) — available in-browser ---
   ZeroModel:                   { family: "baseline", available: true,  needsPython: false },
   LocfModel:                   { family: "baseline", available: true,  needsPython: false },
@@ -71,6 +74,7 @@ export function getModel(name, target, partition, loa = "pgm", hp = {}) {
   }
   const targets = [target];
   switch (name) {
+    case 'AutoTunedModel': return new AutoTunedModel({ targets, partition, loa });
     case "ZeroModel": return new ZeroModel({ targets, partition, loa });
     case "LocfModel": return new LocfModel({ targets, partition, loa });
     case "AverageModel": return new AverageModel({ targets, windowMonths: hp.window_months || 12, partition, loa });

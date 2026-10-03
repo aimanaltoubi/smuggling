@@ -8,7 +8,7 @@
 export function toMonthId(d) {
   const dt = d instanceof Date ? d : new Date(d);
   if (isNaN(dt)) throw new Error(`Cannot convert ${d} to month_id`);
-  return (dt.getFullYear() - 1960) * 12 + (dt.getMonth() + 1);
+  return (dt.getUTCFullYear() - 1960) * 12 + (dt.getUTCMonth() + 1);
 }
 
 export function monthIdToDate(mid) {

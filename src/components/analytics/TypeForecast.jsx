@@ -57,7 +57,7 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
           )}
         </div>
         <p className="text-xs text-muted-foreground mb-3">
-          {metricLabel} | صلب: تاريخي | متقطع: توقع أنبوب MLOps | منقطة: حدود الثقة 80%
+          {metricLabel} | صلب: تاريخي | متقطع: توقع أنبوب MLOps | منقطة: نطاق تجريبي 80% حتى 6 أشهر فقط، وما بعده غير مُتحقق
         </p>
         <div style={{ direction: "ltr", height: 300 }}>
           <ResponsiveContainer>

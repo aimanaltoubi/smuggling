@@ -11,26 +11,27 @@
 
 import { rowsToPanel } from "./PanelBuilder";
 import { frameToProjections } from "./Baselines";
+import { getModel, MODEL_REGISTRY } from '@/lib/pipeline/ModelCatalog';
 
 export default class ForecastingStage {
   execute(ctx, trainOutput) {
     const config = ctx.config;
     const target = config.target;
     const level = config.level;
-    const model = trainOutput.model;
     const horizon = (config.hyperparameters.forecasting || {}).horizon_months || 36;
-
-    // build the full panel (train + validation) for feature lags
-    const allRows = [...ctx.data.partitions.train, ...ctx.data.partitions.validation];
+    // Only after validation, refit on ALL observed history including calibration.
+    const allRows = [...ctx.data.partitions.train, ...ctx.data.partitions.calibration, ...ctx.data.partitions.validation];
     const panel = rowsToPanel(allRows, target, level);
-
+    const name = MODEL_REGISTRY[config.model_name]?.available ? config.model_name : 'AverageModel';
+    const model = getModel(name, target, { test_start: config.partitions.forecast_start, output_length: horizon }, level === 'priogrid' ? 'pgm' : 'cm', config.hyperparameters.model || {});
+    model.fit(panel);
     const predFrames = model.predict(panel, 0);
     const projections = frameToProjections(predFrames);
     const validated = this._validate(projections);
 
     return Object.freeze({
       projections, horizon_months: horizon, target, level,
-      model_name: trainOutput.model_name, validated,
+      model_name: trainOutput.model_name, validated, selection: model.selection || null, interval_note: 'نطاق تجريبي، وليس ضماناً إحصائياً للتغطية',
     });
   }
 
