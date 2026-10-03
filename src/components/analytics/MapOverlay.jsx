@@ -21,7 +21,8 @@ export default function MapOverlay({ viewerRef, items }) {
         const el = itemRefs.current[item.id];
         if (!el) continue;
         const cart = Cesium.Cartesian3.fromDegrees(item.lon, item.lat);
-        const win = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, cart);
+        const transform = Cesium.SceneTransforms.worldToWindowCoordinates || Cesium.SceneTransforms.wgs84ToWindowCoordinates;
+        const win = transform.call(Cesium.SceneTransforms, viewer.scene, cart);
         if (!win || !isFinite(win.x) || !isFinite(win.y)) {
           el.style.display = "none";
           continue;
