@@ -14,7 +14,7 @@ curl.exe --fail --location --output Oman-Incident-Analytics-x64.exe https://gith
 
 Copy only the command lines into CMD. Do not type `bat`; it is only the Markdown code-block label.
 
-This download works after the first versioned GitHub release is published. Then copy `Oman-Incident-Analytics-x64.exe` to a USB drive and transfer it to the offline PC. The offline PC does not need CMD setup, Node.js, or internet access; double-click the EXE to start the app.
+The public `v1.0.1` release is available now; this command downloads its EXE and will follow newer releases automatically. Then copy `Oman-Incident-Analytics-x64.exe` to a USB drive and transfer it to the offline PC. The offline PC does not need CMD setup, Node.js, or internet access; double-click the EXE to start the app.
 
 ## Forecast Models
 
@@ -62,7 +62,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-Use a new version tag for each release. The workflow can also be run manually from GitHub Actions; a manual run provides the EXE as a downloadable workflow artifact.
+Use a new version tag for each release. For example, after the next release changes are pushed to GitHub, run `git tag v1.0.2` and `git push origin v1.0.2`. The workflow can also be run manually from GitHub Actions; a manual run provides the EXE as a downloadable workflow artifact.
 
 ### Build the EXE from CMD
 
