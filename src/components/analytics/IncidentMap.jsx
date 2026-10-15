@@ -161,10 +161,6 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
       orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 },
       duration: 1.6,
     });
-    // Drape grid on 3D terrain (mountains) like the PRIO-GRID reference.
-    try {
-      Cesium.createWorldTerrainAsync().then((tp) => { viewer.terrainProvider = tp; }).catch(() => {});
-    } catch (e) { /* fall back to ellipsoid */ }
   }, []);
 
   const prioGrid = useMemo(() => (hasData ? buildOmanPrioGrid(incidents, activePrediction) : []), [incidents, hasData, activePrediction]);
@@ -263,6 +259,7 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
         <Viewer
           ref={viewerRef}
           full
+          baseLayer={false}
           baseLayerPicker={false}
           geocoder={false}
           homeButton={false}

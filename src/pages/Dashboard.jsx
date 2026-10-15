@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, BarChart3, TrendingUp, Target, Loader2, Upload, ClipboardCheck } from "lucide-react";
-import { loadIncidents } from "@/lib/analytics/dataLoader";
+import React, { useMemo, useState } from "react";
+import { ShieldCheck, BarChart3, TrendingUp, Target, Upload, ClipboardCheck } from "lucide-react";
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 import OverviewSection from "@/components/analytics/OverviewSection";
 import EdaSection from "@/components/analytics/EdaSection";
@@ -20,36 +19,12 @@ const TABS = [
 
 export default function Dashboard() {
   const [incidents, setIncidents] = useState(null);
-  const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    loadIncidents()
-      .then(setIncidents)
-      .catch((e) => setError(e.message || "فشل تحميل البيانات"));
-  }, [reloadKey]);
+  const [activeTab, setActiveTab] = useState("upload");
 
   const prediction = useMemo(
     () => (incidents && incidents.length ? pipelineTacticalPrediction(incidents, { horizonDays: 14 }) : null),
     [incidents]
   );
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" dir="rtl">
-        <div className="text-center text-red-600">{error}</div>
-      </div>
-    );
-  }
-
-  if (!incidents) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background" dir="rtl">
@@ -63,7 +38,7 @@ export default function Dashboard() {
               <p className="text-xs text-muted-foreground">التهريب والتسلل | تحليل بيانات وتوقع موسمي لـ 4 سنوات</p>
             </div>
           </div>
-          <div className="text-xs text-muted-foreground">{incidents.length} سجل</div>
+          <div className="text-xs text-muted-foreground">{incidents ? `${incidents.length} سجل` : "لا توجد بيانات محملة"}</div>
         </div>
         {/* Tabs */}
         <div className="max-w-7xl mx-auto px-4">
@@ -74,6 +49,7 @@ export default function Dashboard() {
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id)}
+                  disabled={!incidents && t.id !== "upload"}
                   className={`flex items-center gap-2 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 transition-colors ${
                     activeTab === t.id ? "border-slate-900 text-slate-900 font-medium" : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
@@ -89,12 +65,12 @@ export default function Dashboard() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === "overview" && <OverviewSection incidents={incidents} prediction={prediction} />}
-        {activeTab === "eda" && <EdaSection incidents={incidents} />}
-        {activeTab === "forecast" && <ForecastSection incidents={incidents} />}
-        {activeTab === "prediction" && <PredictionSection incidents={incidents} />}
-        {activeTab === "upload" && <DataUploadSection onImported={() => setReloadKey((k) => k + 1)} onGoToEDA={() => setActiveTab("eda")} />}
-        {activeTab === "evaluation" && <EvaluationSection incidents={incidents} />}
+        {activeTab === "upload" && <DataUploadSection onImported={setIncidents} onGoToEDA={() => setActiveTab("eda")} />}
+        {incidents && activeTab === "overview" && <OverviewSection incidents={incidents} prediction={prediction} />}
+        {incidents && activeTab === "eda" && <EdaSection incidents={incidents} />}
+        {incidents && activeTab === "forecast" && <ForecastSection incidents={incidents} />}
+        {incidents && activeTab === "prediction" && <PredictionSection incidents={incidents} />}
+        {incidents && activeTab === "evaluation" && <EvaluationSection incidents={incidents} />}
       </main>
     </div>
   );

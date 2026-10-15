@@ -23,6 +23,7 @@ const GOV_PROFILES = [
 
 // Monthly seasonal multipliers (index 0 = January)
 const SEASONAL = [0.55, 0.50, 0.70, 0.90, 1.25, 1.55, 1.85, 1.70, 1.35, 1.00, 0.70, 0.50];
+const LOCATION_NAMES = ["موقع أ", "موقع ب", "موقع ج"];
 
 function makeRng(seed) {
   let s = seed >>> 0;
@@ -53,7 +54,7 @@ export function generateSyntheticIncidents(opts = {}) {
     trendPerMonth = 0.02,
     smugglingRatio = 0.60,
     noise = 0, rateScale = 1, shockMultiplier = 1, shiftMonth = 30,
-    spatialShift = false, typeShift = false,
+    spatialShift = false, typeShift = false, locationShift = false,
   } = opts;
 
   const rng = makeRng(seed);
@@ -80,12 +81,17 @@ export function generateSyntheticIncidents(opts = {}) {
       const count = poisson(rng, dailyRate);
 
       for (let i = 0; i < count; i++) {
+        const locationDraw = rng();
+        const shiftedLocation = locationShift && shifted;
+        const locationIndex = shiftedLocation
+          ? locationDraw < 0.8 ? 2 : locationDraw < 0.9 ? 1 : 0
+          : locationDraw < 0.6 ? 0 : locationDraw < 0.9 ? 1 : 2;
         const isSmuggling = rng() < (typeShift && monthIdx >= shiftMonth ? 1 - smugglingRatio : smugglingRatio);
         const detained = Math.max(1, poisson(rng, 2) + 1);
         incidents.push({
           incident_id: `SYN-${String(id++).padStart(5, "0")}`,
           incident_date: date.toISOString().split("T")[0],
-          location_name: `ولاية ${gov.name}`,
+          location_name: `${LOCATION_NAMES[locationIndex]} - ${gov.name}`,
           governorate: gov.name,
           latitude: +(gov.lat + (rng() - 0.5) * 0.4).toFixed(4),
           longitude: +(gov.lng + (rng() - 0.5) * 0.4).toFixed(4),

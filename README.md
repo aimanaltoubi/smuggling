@@ -1,62 +1,93 @@
-# Base44 Project
+# Oman Incident Analytics
 
-Use this repository to run and edit the app locally, then publish changes back through Base44.
+Offline analytics for incident records supplied as a local CSV. The CSV is parsed in the app and is not uploaded. No account, backend, or internet connection is needed to analyze a file. Imported data remains in memory for the current app session; select the CSV again after restarting the app.
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+## Forecast Models
 
-## Prerequisites
+### Monthly strategic forecast
 
-1. Clone the repository using the project's Git URL.
-2. Navigate to the project directory.
-3. Install dependencies: `npm install`.
-4. Install the Base44 CLI: `npm install -g base44@latest`.
-5. Install [Deno](https://docs.deno.com/runtime/getting_started/installation/) — the local Base44 backend runs on it.
+The strategic forecast aggregates incidents and detainees by month and governorate, then projects up to 48 months. Its default `AutoTunedModel` evaluates 17 candidate configurations using rolling time-based validation:
 
-Run `base44 --help` (or see the [CLI reference](https://docs.base44.com/developers/references/cli/commands/introduction)) for the full command surface.
+- Recent averages over 3, 6, or 12 months, plus a last-observation baseline.
+- Seasonal climatology over 24 or 36 months.
+- A seasonal trend model and four damped Holt trend configurations.
+- Six lagged-feature ridge models using recent, seasonal, or trend features.
 
-## Run Locally
+Candidates are scored at 1-, 3-, and 6-month horizons. The selected model or ensemble must improve on a recent/seasonal baseline during internal validation; otherwise the baseline is retained. Experimental forecast intervals are based on held-out residuals. They are not guaranteed probability intervals. The 48-month projection is **not fully validated**: the evaluation workflow measures 1, 3, and 6 months.
 
-Three commands, from the project root:
+### Tactical forecast
 
-```bash
-base44 login   # one-time per machine
-base44 link    # one-time per clone
-base44 dev     # local backend + frontend together
+The tactical forecast runs the monthly pipeline separately for incident counts and detainee counts at governorate level, then converts monthly totals into daily rates. A recent-activity weight is tuned independently for each target from earlier time windows and blends the pipeline rate with the previous 30 days.
+
+The prediction tab reports a 14-day expected total and daily profile; the map can compare 14- and 30-day windows. The highest expected day, a governorate ranking, a location, and a likely incident type are also reported. The evaluation additionally tests 7-day windows. The type is selected from recent incident-type frequency; the location is the latest observed location for the top-ranked governorate. The risk score is a relative ranking, not a calibrated probability. These outputs should be treated as planning estimates, not event-level guarantees.
+
+### Forecast evaluation
+
+The Evaluation tab supports uploaded data and controlled synthetic use cases. Synthetic tests cover stable seasonal activity, gradual growth, and a sudden volume/geography/type shift, with three deterministic random seeds per use case. Monthly backtests score incidents and detainees for all incidents and each incident type. Tactical tests score 7-, 14-, and 30-day totals, daily counts, type, governorate/top-three ranking, location, peak timing, and detainee rate against held-out future records.
+
+WAPE and MASE describe error; skill compares error with a simple seasonal or recent-rate baseline (positive is better, negative is worse). Synthetic performance checks whether the model responds to known patterns; it does not establish accuracy on real incidents. Use the uploaded-data evaluation before operational use.
+
+## CSV Format
+
+The first row must use these English column names:
+
+Required: `incident_id`, `incident_date` (`YYYY-MM-DD`), `location_name`, `governorate`, `latitude`, `longitude`, `incident_type` (`تهريب` or `تسلل`), `detained_count`.
+
+Optional: `ethnicity`, `details`.
+
+Use the upload tab to select the CSV. The app validates required values, coordinates, dates, and incident types before analysis.
+
+## Windows Portable EXE
+
+The Windows x64 portable executable bundles the app, Electron runtime, and local Cesium assets. Build it on an internet-connected Windows PC, then copy the single EXE to the offline PC. The offline PC does not need Node.js, npm, or an internet connection. The map is a local globe without online terrain or imagery.
+
+### Download a published EXE using CMD
+
+After a versioned GitHub release has been published, run this in Windows Command Prompt:
+
+```bat
+mkdir "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
+cd /d "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
+curl.exe --fail --location --output Oman-Incident-Analytics-x64.exe https://github.com/aimanaltoubi/smuggling/releases/latest/download/Oman-Incident-Analytics-x64.exe
 ```
 
-Open the frontend URL that `base44 dev` prints (typically `http://localhost:5173`).
+The Windows release workflow publishes the EXE when a `v*` version tag is pushed. To create a release after the project changes are pushed to GitHub, run from the repository:
 
-Notes:
-
-- **Every fresh clone needs `base44 link`.** It writes `base44/.app.jsonc` (the app-id pointer), which is deliberately gitignored. Your app id is in the Builder URL (`app.base44.com/apps/<id>/...`); `base44 link --help` shows the non-interactive flags.
-- **`base44 dev` runs the frontend for you** (via `site.serveCommand` in this repo's `base44/config.jsonc`) — never run `npm run dev` yourself: alone it serves a UI with no backend behind it (`[base44] Proxy not enabled`, every `/api` call fails), and alongside `base44 dev` the second Vite silently takes the next port and you end up looking at the wrong one.
-- **The app must be published at least once for the UI to load under `base44 dev`.** The frontend boots by fetching app settings from the hosted app; before the first publish that fails and every page redirects to login. The local API works regardless.
-- Entities, functions, and auth run locally — entity data is **in-memory only**, wiped when `base44 dev` restarts. Everything else (Core integrations, OAuth login) is forwarded to your deployed app. Full breakdown: [Local development overview](https://docs.base44.com/developers/backend/overview/local-dev/local-development-overview).
-
-## Frontend Only, Hosted Backend
-
-To work on just the frontend against your app's live hosted backend:
-
-```bash
-base44 dev --remote
+```bat
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-⚠️ In this mode writes go to your app's **production data** — plain `base44 dev` keeps everything local.
+Use a new version tag for each release. The workflow can also be run manually from GitHub Actions; a manual run provides the EXE as a downloadable workflow artifact.
 
-## Publish Your Changes
+### Build the EXE from CMD
 
-After pushing your changes to git, open the Base44 dashboard and publish the app:
+On an internet-connected Windows 10/11 x64 PC, install Git and Node.js 22.12 or newer, then run:
 
-```bash
-base44 dashboard open
+```bat
+if not exist "%USERPROFILE%\source" mkdir "%USERPROFILE%\source"
+cd /d "%USERPROFILE%\source"
+git clone https://github.com/aimanaltoubi/smuggling.git
+cd smuggling
+npm ci
+npm run package:win
 ```
 
-This repo syncs to Base44 through git, so publish from the dashboard rather than `base44 deploy` — a CLI deploy ships your local tree directly, bypassing the sync, and the deployed state silently diverges from the repo.
+The portable executable is written to `release\Oman-Incident-Analytics-x64.exe`. Copy that file to a USB drive, then to the offline PC. To run it from CMD:
 
-## Docs & Support
+```bat
+cd /d E:\OmanIncidentAnalytics
+Oman-Incident-Analytics-x64.exe
+```
 
-GitHub integration: [https://docs.base44.com/developers/app-code/local-development/github](https://docs.base44.com/developers/app-code/local-development/github)
+You can also double-click the EXE. On first launch, Windows SmartScreen may warn that the app is unsigned. The portable build is not code-signed.
 
-Local development: [https://docs.base44.com/developers/backend/overview/local-dev/local-development-overview](https://docs.base44.com/developers/backend/overview/local-dev/local-development-overview)
+### Run from source or build a web bundle
 
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+```bash
+npm ci
+npm run dev
+npm run build
+```
+
+For offline browser use instead of the EXE, build while dependencies are available, then serve the `dist` directory over localhost on the offline PC.

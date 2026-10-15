@@ -24,7 +24,7 @@ export default function EvaluationSection({ incidents = [] }) {
       <p className="text-sm text-muted-foreground">فحص البيانات ← ضبط زمني داخلي ← اختبار خارجي مستقل ← مقارنة خط أساس ← قياس عدم اليقين.</p>
       <div className="flex flex-wrap items-center gap-3">
         <select aria-label="مصدر التقييم" disabled={running} value={source} onChange={e => { setSource(e.target.value); setEvaluation(null); }} className="rounded-lg border border-input bg-background p-2 text-sm">
-          <option value="real">البيانات المحملة، كلا النوعين والهدفين</option><option value="stress">متانة اصطناعية، 6 سيناريوهات × 3 بذور</option>
+          <option value="real">البيانات المحملة، الحوادث والمعتقلون لكل نوع</option><option value="stress">حالات استخدام معلومة، 3 سيناريوهات × 3 بذور</option>
         </select>
         <button disabled={running || (source === 'real' && !incidents.length)} onClick={run} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50">{running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{running ? 'جاري التقييم' : 'تشغيل التقييم والضبط'}</button>
       </div>

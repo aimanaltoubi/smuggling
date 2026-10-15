@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Upload, Download, Loader2, CheckCircle, AlertCircle, FileSpreadsheet, BarChart3 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { parseIncidentCsv } from "@/lib/analytics/csvImport";
 
 const COLUMNS = [
   { name: "incident_id", type: "نص", required: true, example: "INC-001" },
@@ -17,7 +17,6 @@ const COLUMNS = [
 
 export default function DataUploadSection({ onImported, onGoToEDA }) {
   const [file, setFile] = useState(null);
-  const [replaceExisting, setReplaceExisting] = useState(false);
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -28,26 +27,18 @@ export default function DataUploadSection({ onImported, onGoToEDA }) {
     setError(null);
     setResult(null);
     try {
-      const { file_uri } = await base44.integrations.Core.UploadPrivateFile({ file });
-      const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({ file_uri, expires_in: 300 });
-
-      const response = await base44.functions.invoke("importIncidents", {
-        file_url: signed_url,
-        replace_existing: replaceExisting,
-      });
-
-      const data = response.data;
-      if (data.error) {
+      const { rows, errors } = await parseIncidentCsv(file);
+      if (!rows.length) {
         setStatus("error");
-        setError(data.error);
-        if (data.errors) setResult({ errors: data.errors });
+        setError("No valid incident rows found in this CSV.");
+        setResult({ errors });
         return;
       }
 
       setStatus("done");
-      setResult(data);
+      setResult({ imported: rows.length, failed: errors.length, errors });
       setFile(null);
-      onImported?.();
+      onImported?.(rows);
     } catch (e) {
       setStatus("error");
       setError(e.message || "فشل رفع البيانات");
@@ -75,7 +66,7 @@ export default function DataUploadSection({ onImported, onGoToEDA }) {
           <h3 className="font-semibold">رفع بيانات الحوادث</h3>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          ارفع ملف Excel أو CSV يحتوي على بيانات الحوادث. يجب أن يحتوي الصف الأول على أسماء الأعمدة التالية بالإنجليزية:
+          اختر ملف CSV محلياً يحتوي على بيانات الحوادث. يجب أن يحتوي الصف الأول على أسماء الأعمدة التالية بالإنجليزية:
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -114,22 +105,12 @@ export default function DataUploadSection({ onImported, onGoToEDA }) {
             <label className="block text-sm font-medium mb-2">اختر الملف</label>
             <input
               type="file"
-              accept=".xlsx,.csv"
+              accept=".csv,text/csv"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               className="block w-full text-sm text-muted-foreground file:ml-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-900 file:text-white file:cursor-pointer"
             />
             {file && <p className="mt-2 text-xs text-muted-foreground">{file.name} ({(file.size / 1024).toFixed(1)} KB)</p>}
           </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={replaceExisting}
-              onChange={(e) => setReplaceExisting(e.target.checked)}
-              className="w-4 h-4"
-            />
-            <span>استبدال البيانات الحالية (حذف كل السجلات الموجودة قبل الاستيراد)</span>
-          </label>
 
           <button
             onClick={handleUpload}
@@ -164,6 +145,11 @@ export default function DataUploadSection({ onImported, onGoToEDA }) {
               <BarChart3 className="w-4 h-4" />
               تحليل البيانات (EDA)
             </button>
+          )}
+          {result.errors?.length > 0 && (
+            <ul className="mt-3 text-xs text-amber-700 list-disc pr-5 space-y-0.5">
+              {result.errors.slice(0, 20).map((message, index) => <li key={index}>{message}</li>)}
+            </ul>
           )}
         </div>
       )}
