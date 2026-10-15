@@ -2,6 +2,20 @@
 
 Offline analytics for incident records supplied as a local CSV. The CSV is parsed in the app and is not uploaded. No account, backend, or internet connection is needed to analyze a file. Imported data remains in memory for the current app session; select the CSV again after restarting the app.
 
+## Download the EXE from Windows CMD
+
+On an internet-connected Windows PC, run these commands in Command Prompt to download the latest published portable EXE:
+
+```bat
+if not exist "%USERPROFILE%\Desktop\OmanIncidentAnalytics" mkdir "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
+cd /d "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
+curl.exe --fail --location --output Oman-Incident-Analytics-x64.exe https://github.com/aimanaltoubi/smuggling/releases/latest/download/Oman-Incident-Analytics-x64.exe
+```
+
+Copy only the command lines into CMD. Do not type `bat`; it is only the Markdown code-block label.
+
+This download works after the first versioned GitHub release is published. Then copy `Oman-Incident-Analytics-x64.exe` to a USB drive and transfer it to the offline PC. The offline PC does not need CMD setup, Node.js, or internet access; double-click the EXE to start the app.
+
 ## Forecast Models
 
 ### Monthly strategic forecast
@@ -40,16 +54,6 @@ Use the upload tab to select the CSV. The app validates required values, coordin
 ## Windows Portable EXE
 
 The Windows x64 portable executable bundles the app, Electron runtime, and local Cesium assets. Build it on an internet-connected Windows PC, then copy the single EXE to the offline PC. The offline PC does not need Node.js, npm, or an internet connection. The map is a local globe without online terrain or imagery.
-
-### Download a published EXE using CMD
-
-After a versioned GitHub release has been published, run this in Windows Command Prompt:
-
-```bat
-mkdir "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
-cd /d "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
-curl.exe --fail --location --output Oman-Incident-Analytics-x64.exe https://github.com/aimanaltoubi/smuggling/releases/latest/download/Oman-Incident-Analytics-x64.exe
-```
 
 The Windows release workflow publishes the EXE when a `v*` version tag is pushed. To create a release after the project changes are pushed to GitHub, run from the repository:
 
