@@ -51,9 +51,27 @@ Optional: `ethnicity`, `details`.
 
 Use the upload tab to select the CSV. The app validates required values, coordinates, dates, and incident types before analysis.
 
+Download the reproducible four-year synthetic sample from [`public/sample-incidents.csv`](public/sample-incidents.csv), or use the full-data download link in the app's upload tab. It contains no operational incident data; its seeded pattern has summer peaks, winter lows, five governorates, and mixed incident types. It is long enough to exercise forecasting and evaluation workflows.
+
 ## Windows Portable EXE
 
-The Windows x64 portable executable bundles the app, Electron runtime, and local Cesium assets. Build it on an internet-connected Windows PC, then copy the single EXE to the offline PC. The offline PC does not need Node.js, npm, or an internet connection. The map is a local globe without online terrain or imagery.
+The Windows x64 portable executable bundles the app, Electron runtime, and local Cesium assets. Build it on an internet-connected Windows PC, then copy the EXE to the offline PC. The offline PC does not need Node.js, npm, or an internet connection. The map uses a bundled schematic base map with no online tiles; it is for orientation, not authoritative boundary reference.
+
+### Optional offline forecast explanations
+
+The app can use Qwen 2.5 1.5B Instruct (Q4_K_M, approximately 1.12 GB) with the llama.cpp Windows CPU runtime to produce short Arabic explanations of the forecasts shown in the strategic and tactical tabs. The model receives forecast results and validation facts only. It does not create or modify forecast numbers, and its explanations can still be wrong; treat them as commentary, not additional evidence. The normal analytics app works without these optional files.
+
+On an internet-connected Windows PC, download the runtime and model into the same folder as the EXE:
+
+```bat
+cd /d "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
+if not exist llama-runtime mkdir llama-runtime
+curl.exe --fail --location --output llama-runtime.zip https://github.com/ggml-org/llama.cpp/releases/download/b11662/llama-b11662-bin-win-cpu-x64.zip
+powershell -NoProfile -Command "Expand-Archive -LiteralPath 'llama-runtime.zip' -DestinationPath 'llama-runtime' -Force"
+curl.exe --fail --location --output qwen2.5-1.5b-instruct-q4_k_m.gguf https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+```
+
+Copy the EXE, the `llama-runtime` folder, and the `.gguf` model file together to the offline PC. The app starts the CPU model locally when present; first startup can take a few minutes. The model is Apache-2.0 licensed. This adds about 1.12 GB of model storage plus the small runtime ZIP (about 20 MB compressed); no model is embedded in the EXE.
 
 The Windows release workflow publishes the EXE when a `v*` version tag is pushed. To create a release after the project changes are pushed to GitHub, run from the repository:
 

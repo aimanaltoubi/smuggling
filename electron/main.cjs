@@ -2,6 +2,7 @@ const { app, BrowserWindow } = require('electron');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const localLlm = require('./localLlm.cjs');
 
 const DIST_DIR = path.resolve(__dirname, '..', 'dist');
 const MIME_TYPES = {
@@ -35,6 +36,42 @@ function startLocalServer() {
         return;
       }
 
+      if (pathname === '/api/llm/status' && request.method === 'GET') {
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        response.end(JSON.stringify(localLlm.getStatus()));
+        return;
+      }
+
+      if (pathname === '/api/llm/explain' && request.method === 'POST') {
+        const appPort = localServer.address()?.port;
+        const allowedOrigin = `http://127.0.0.1:${appPort}`;
+        if (request.headers.origin !== allowedOrigin) {
+          response.writeHead(403).end('Forbidden');
+          return;
+        }
+
+        const chunks = [];
+        let bodySize = 0;
+        request.on('data', chunk => {
+          bodySize += chunk.length;
+          if (bodySize > 32768) request.destroy();
+          else chunks.push(chunk);
+        });
+        request.on('end', async () => {
+          if (bodySize > 32768) return;
+          try {
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            const text = await localLlm.explain(body.facts);
+            response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+            response.end(JSON.stringify({ text }));
+          } catch (error) {
+            response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+            response.end(JSON.stringify({ error: error.message || 'Local explanation unavailable.' }));
+          }
+        });
+        return;
+      }
+
       const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
       const filePath = path.resolve(DIST_DIR, relativePath);
       if (!filePath.startsWith(`${DIST_DIR}${path.sep}`)) {
@@ -63,6 +100,7 @@ function startLocalServer() {
 }
 
 async function createWindow() {
+  await localLlm.start(app);
   const port = await startLocalServer();
   const window = new BrowserWindow({
     width: 1440,
@@ -88,7 +126,10 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-app.on('before-quit', () => localServer?.close());
+app.on('before-quit', () => {
+  localLlm.stop();
+  localServer?.close();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

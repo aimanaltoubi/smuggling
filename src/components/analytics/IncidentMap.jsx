@@ -142,7 +142,7 @@ function buildBorderSectors(incidents) {
   return Object.values(stats).sort((a, b) => b.score - a.score);
 }
 
-export default function IncidentMap({ incidents, prediction, height = 420 }) {
+export default function IncidentMap({ incidents, height = 420 }) {
   const hasData = incidents && incidents.length > 0;
   const shown = hasData ? incidents.slice(0, 400) : [];
   const viewerRef = useRef(null);
@@ -156,11 +156,32 @@ export default function IncidentMap({ incidents, prediction, height = 420 }) {
   useEffect(() => {
     const viewer = viewerRef.current?.cesiumElement;
     if (!viewer) return;
+
+    let cancelled = false;
+    const rectangle = Cesium.Rectangle.fromDegrees(
+      OMAN_BOUNDS.lngMin,
+      OMAN_BOUNDS.latMin,
+      OMAN_BOUNDS.lngMax,
+      OMAN_BOUNDS.latMax,
+    );
+    const mapUrl = new URL("offline-oman-map.svg", window.location.href).href;
+    Cesium.SingleTileImageryProvider.fromUrl(mapUrl, { rectangle })
+      .then((provider) => {
+        if (cancelled || viewer.isDestroyed()) {
+          provider.destroy();
+          return;
+        }
+        viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#c9e0e7");
+        viewer.imageryLayers.addImageryProvider(provider);
+      })
+      .catch((error) => console.error("Could not load the bundled offline map", error));
+
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(OMAN.lon, OMAN.lat, OMAN.height),
       orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 },
       duration: 1.6,
     });
+    return () => { cancelled = true; };
   }, []);
 
   const prioGrid = useMemo(() => (hasData ? buildOmanPrioGrid(incidents, activePrediction) : []), [incidents, hasData, activePrediction]);

@@ -97,6 +97,14 @@ export default function DataUploadSection({ onImported, onGoToEDA }) {
           <Download className="w-4 h-4" />
           تحميل قالب جاهز (CSV)
         </button>
+        <a
+          href={`${import.meta.env.BASE_URL}sample-incidents.csv`}
+          download="sample-incidents.csv"
+          className="mt-2 flex items-center gap-2 text-sm text-green-700 hover:underline"
+        >
+          <Download className="w-4 h-4" />
+          تنزيل بيانات تجريبية كاملة (4 سنوات)
+        </a>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-5">

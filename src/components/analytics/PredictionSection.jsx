@@ -3,6 +3,7 @@ import { MapPin, CalendarClock, Users, Sparkles, CalendarOff, Activity } from "l
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 import IncidentMap from "./IncidentMap";
+import LocalForecastExplanation from "./LocalForecastExplanation";
 
 export default function PredictionSection({ incidents }) {
   const prediction = useMemo(() => {
@@ -14,7 +15,6 @@ export default function PredictionSection({ incidents }) {
     return <div className="text-muted-foreground" dir="rtl">لا توجد بيانات كافية للتنبؤ</div>;
   }
 
-  const confColor = { عالية: "text-green-600 bg-green-50", متوسطة: "text-amber-600 bg-amber-50", منخفضة: "text-red-600 bg-red-50" };
   const dailyData = prediction.when.dailyBreakdown.map((d) => ({
     day: `${d.date.getDate()}/${d.date.getMonth() + 1}`,
     expected: +d.expected.toFixed(2),
@@ -134,6 +134,29 @@ export default function PredictionSection({ incidents }) {
           <ReasonRow label="نوع الحادث" text={prediction.reasoning.typeReason} />
         </div>
       </div>
+
+      <LocalForecastExplanation facts={{
+        forecast: "tactical event prediction",
+        observationEnd: prediction.dataEndpoint.lastDateLabel,
+        window: { start: prediction.forecastWindow.startLabel, end: prediction.forecastWindow.endLabel, days: prediction.forecastWindow.days },
+        expectedIncidentTotal: prediction.when.totalExpectedIncidents,
+        dailyIncidentForecast: prediction.when.dailyBreakdown.map(day => ({ date: day.label, expectedIncidents: day.expected })),
+        peakDay: { date: prediction.when.peakDay.label, expectedIncidents: prediction.when.peakDay.expected },
+        expectedDetaineeTotal: prediction.howMany.expectedTotalDetained,
+        expectedDetaineesPerIncident: prediction.howMany.expectedDetainedPerIncident,
+        predictedIncidentType: prediction.howMany.predictedType,
+        topGovernorate: prediction.where.governorate,
+        location: prediction.where.location,
+        relativeRiskScore: prediction.where.riskScore,
+        governorateRanking: prediction.where.ranking.map(({ governorate, score }) => ({ governorate, relativeShare: score })),
+        model: {
+          name: prediction.model.pipelineModel,
+          selectedCandidates: prediction.model.ensemble?.members?.map(({ id }) => id),
+          incidentsRecentWeight: prediction.model.momentumWeight,
+          detaineesRecentWeight: prediction.model.detainedMomentumWeight,
+        },
+        deterministicReasoning: prediction.reasoning,
+      }} />
 
       {/* Governorate risk ranking */}
       <div className="rounded-xl border border-border bg-card p-4">

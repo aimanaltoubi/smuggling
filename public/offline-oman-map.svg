@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">
+  <defs>
+    <pattern id="grid" width="296" height="168" patternUnits="userSpaceOnUse">
+      <path d="M 296 0 L 0 0 0 168" fill="none" stroke="#8eaaad" stroke-opacity=".36" stroke-width="1" />
+    </pattern>
+  </defs>
+  <rect width="1200" height="850" fill="#c9e0e7" />
+  <path d="M0 0H540L525 180 490 260 450 340 402 430 350 525 300 615 250 710 190 850H0Z" fill="#e6e3d7" stroke="#9b9a8d" stroke-width="3" />
+  <path d="M450 0H1200V230L1110 256 1015 222 930 240 850 208 780 214 720 190 650 208 600 190 530 208Z" fill="#e6e3d7" stroke="#9b9a8d" stroke-width="3" />
+  <path d="M0 430 90 410 180 395 250 375 340 350 405 321 475 300 535 286 585 269 610 235 640 214 667 221 700 240 726 253 760 284 800 295 830 330 875 350 910 380 942 420 960 455 950 500 920 540 885 580 850 620 825 665 780 705 740 740 695 770 650 792 600 801 540 785 490 777 435 765 380 748 325 725 270 700 220 665 175 630 130 585 88 540 45 495Z" fill="#c5d9bd" stroke="#65856b" stroke-width="5" />
+  <rect width="1200" height="850" fill="url(#grid)" />
+  <path d="M0 0V850M296 0V850M592 0V850M888 0V850M1199 0V850M0 49H1200M0 218H1200M0 386H1200M0 555H1200M0 723H1200M0 849H1200" fill="none" stroke="#77979c" stroke-opacity=".44" stroke-width="1" />
+  <path d="M625 205 647 190 672 196 686 213 676 233 651 239 633 226Z" fill="#c5d9bd" stroke="#65856b" stroke-width="4" />
+  <g fill="#50676a" font-family="sans-serif" text-anchor="middle">
+    <text x="560" y="500" font-size="40" font-weight="700" fill="#527259">سلطنة عمان</text>
+    <text x="220" y="360" font-size="26">السعودية</text>
+    <text x="1000" y="130" font-size="25">إيران</text>
+    <text x="652" y="275" font-size="20">مسندم</text>
+    <text x="800" y="180" font-size="25" fill="#52798a">خليج عمان</text>
+    <text x="880" y="760" font-size="25" fill="#52798a">بحر العرب</text>
+    <text x="600" y="820" font-size="16" fill="#60797d">خريطة توضيحية محلية</text>
+    <text x="80" y="825" font-size="17" fill="#60797d">51.9°E</text>
+    <text x="1120" y="825" font-size="17" fill="#60797d">60°E</text>
+    <text x="1140" y="42" font-size="17" fill="#60797d">26.6°N</text>
+    <text x="1140" y="836" font-size="17" fill="#60797d">16.5°N</text>
+  </g>
+  <rect x="16" y="16" width="1168" height="818" rx="4" fill="none" stroke="#617c80" stroke-opacity=".72" stroke-width="2" />
+</svg>

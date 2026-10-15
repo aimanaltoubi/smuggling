@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { CalendarOff } from "lucide-react";
 import { pipelineStrategicForecast } from "@/lib/pipeline/PipelineBridge";
+import LocalForecastExplanation from "./LocalForecastExplanation";
 
 const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 function fmtDate(d) {
@@ -36,6 +37,19 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
     return Object.values(byYear);
   }, [projection]);
 
+  const explanationFacts = {
+    forecast: "monthly strategic",
+    target: metricLabel,
+    incidentType: title,
+    historyStart: chartData.find(row => row.actual != null)?.period,
+    historyEnd: lastDate?.toISOString().slice(0, 7),
+    recentMonthlyActuals: chartData.filter(row => row.actual != null).slice(-12).map(({ period, actual }) => ({ period, actual })),
+    projectedMonthlyValues: projection.map(({ period, value, lower95, upper95 }) => ({ period, value, lower95, upper95 })),
+    selectedCandidates: params?.selection?.members?.map(({ id, predictors }) => ({ id, predictors })),
+    validatedHorizonMonths: params?.validatedHorizon,
+    validationRmse: residStd,
+  };
+
   if (!chartData.length) {
     return (
       <div className="rounded-xl border border-border bg-card p-4">
@@ -63,7 +77,7 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
           <ResponsiveContainer>
             <LineChart data={chartData} margin={{ left: 10, right: 20 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" tick={{ fontSize: 10 }} interval={5} />
+              <XAxis dataKey="period" tick={{ fontSize: 9 }} interval={11} minTickGap={24} height={36} />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip />
               <Legend />
@@ -75,6 +89,8 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
           </ResponsiveContainer>
         </div>
       </div>
+
+      <LocalForecastExplanation facts={explanationFacts} />
 
       <div className="rounded-xl border border-border bg-card p-4">
         <h4 className="font-semibold mb-3">الإجمالي السنوي المتوقع — {title}</h4>
