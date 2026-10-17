@@ -4,15 +4,13 @@ Offline analytics for incident records supplied as a local CSV. The CSV is parse
 
 ## Download the EXE from Windows CMD
 
-On an internet-connected Windows PC, run these commands in Command Prompt to download the latest published self-contained installer:
+On an internet-connected Windows PC, paste this entire line into Command Prompt to download the latest published self-contained installer:
 
 ```bat
-if not exist "%USERPROFILE%\Desktop\OmanIncidentAnalytics" mkdir "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
-cd /d "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
-curl.exe --fail --location --output Oman-Incident-Analytics-Setup-x64.exe https://github.com/aimanaltoubi/smuggling/releases/latest/download/Oman-Incident-Analytics-Setup-x64.exe
+if not exist "%USERPROFILE%\Desktop\OmanIncidentAnalytics" mkdir "%USERPROFILE%\Desktop\OmanIncidentAnalytics" & cd /d "%USERPROFILE%\Desktop\OmanIncidentAnalytics" & curl.exe --fail --location --output Oman-Incident-Analytics-Setup-x64.exe https://github.com/aimanaltoubi/smuggling/releases/latest/download/Oman-Incident-Analytics-Setup-x64.exe
 ```
 
-Copy only the command lines into CMD. Do not type `bat`; it is only the Markdown code-block label.
+Paste the command exactly as one line. Do not type `bat`; it is only the Markdown code-block label.
 
 The currently published `v1.0.1` release predates the self-contained installer. The next versioned release will publish `Oman-Incident-Analytics-Setup-x64.exe`; this command will then follow newer releases automatically. Copy that single installer EXE to a USB drive and transfer it to the offline PC. Run it there to install the complete app, including the map, model runtime, and 1.12 GB language model. The offline PC does not need CMD setup, Node.js, or internet access.
 
