@@ -4,17 +4,17 @@ Offline analytics for incident records supplied as a local CSV. The CSV is parse
 
 ## Download the EXE from Windows CMD
 
-On an internet-connected Windows PC, run these commands in Command Prompt to download the latest published portable EXE:
+On an internet-connected Windows PC, run these commands in Command Prompt to download the latest published self-contained installer:
 
 ```bat
 if not exist "%USERPROFILE%\Desktop\OmanIncidentAnalytics" mkdir "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
 cd /d "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
-curl.exe --fail --location --output Oman-Incident-Analytics-x64.exe https://github.com/aimanaltoubi/smuggling/releases/latest/download/Oman-Incident-Analytics-x64.exe
+curl.exe --fail --location --output Oman-Incident-Analytics-Setup-x64.exe https://github.com/aimanaltoubi/smuggling/releases/latest/download/Oman-Incident-Analytics-Setup-x64.exe
 ```
 
 Copy only the command lines into CMD. Do not type `bat`; it is only the Markdown code-block label.
 
-The public `v1.0.1` release is available now; this command downloads its EXE and will follow newer releases automatically. Then copy `Oman-Incident-Analytics-x64.exe` to a USB drive and transfer it to the offline PC. The offline PC does not need CMD setup, Node.js, or internet access; double-click the EXE to start the app.
+The currently published `v1.0.1` release predates the self-contained installer. The next versioned release will publish `Oman-Incident-Analytics-Setup-x64.exe`; this command will then follow newer releases automatically. Copy that single installer EXE to a USB drive and transfer it to the offline PC. Run it there to install the complete app, including the map, model runtime, and 1.12 GB language model. The offline PC does not need CMD setup, Node.js, or internet access.
 
 ## Forecast Models
 
@@ -53,34 +53,22 @@ Use the upload tab to select the CSV. The app validates required values, coordin
 
 Download the reproducible four-year synthetic sample from [`public/sample-incidents.csv`](public/sample-incidents.csv), or use the full-data download link in the app's upload tab. It contains no operational incident data; its seeded pattern has summer peaks, winter lows, five governorates, and mixed incident types. It is long enough to exercise forecasting and evaluation workflows.
 
-## Windows Portable EXE
+## Windows Offline Installer
 
-The Windows x64 portable executable bundles the app, Electron runtime, and local Cesium assets. Build it on an internet-connected Windows PC, then copy the EXE to the offline PC. The offline PC does not need Node.js, npm, or an internet connection. The map uses a bundled schematic base map with no online tiles; it is for orientation, not authoritative boundary reference.
+The Windows x64 setup EXE contains the app, Electron runtime, local map assets, llama.cpp CPU runtime, and Qwen model. It is a single file for transfer to the offline PC. Its download/install size is about 1.2 GB; allow at least 3 GB of free disk space while installing. The schematic basemap has no online tiles and is for orientation, not authoritative boundary reference.
 
 ### Optional offline forecast explanations
 
-The app can use Qwen 2.5 1.5B Instruct (Q4_K_M, approximately 1.12 GB) with the llama.cpp Windows CPU runtime to produce short Arabic explanations of the forecasts shown in the strategic and tactical tabs. The model receives forecast results and validation facts only. It does not create or modify forecast numbers, and its explanations can still be wrong; treat them as commentary, not additional evidence. The normal analytics app works without these optional files.
+Qwen 2.5 1.5B Instruct (Q4_K_M) runs through the bundled llama.cpp CPU runtime and generates short Arabic explanations in the strategic and tactical tabs. It receives forecast results and validation facts only; it cannot change forecasts. Its text may still be wrong and is commentary, not evidence. The model is Apache-2.0 licensed. No extra files or post-install downloads are needed.
 
-On an internet-connected Windows PC, download the runtime and model into the same folder as the EXE:
-
-```bat
-cd /d "%USERPROFILE%\Desktop\OmanIncidentAnalytics"
-if not exist llama-runtime mkdir llama-runtime
-curl.exe --fail --location --output llama-runtime.zip https://github.com/ggml-org/llama.cpp/releases/download/b11662/llama-b11662-bin-win-cpu-x64.zip
-powershell -NoProfile -Command "Expand-Archive -LiteralPath 'llama-runtime.zip' -DestinationPath 'llama-runtime' -Force"
-curl.exe --fail --location --output qwen2.5-1.5b-instruct-q4_k_m.gguf https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
-```
-
-Copy the EXE, the `llama-runtime` folder, and the `.gguf` model file together to the offline PC. The app starts the CPU model locally when present; first startup can take a few minutes. The model is Apache-2.0 licensed. This adds about 1.12 GB of model storage plus the small runtime ZIP (about 20 MB compressed); no model is embedded in the EXE.
-
-The Windows release workflow publishes the EXE when a `v*` version tag is pushed. To create a release after the project changes are pushed to GitHub, run from the repository:
+The Windows release workflow builds the model-inclusive installer when a `v*` version tag is pushed. The current `v1.0.1` release does not include these changes. After they are pushed, create `v1.0.2` from the repository:
 
 ```bat
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.2
+git push origin v1.0.2
 ```
 
-Use a new version tag for each release. For example, after the next release changes are pushed to GitHub, run `git tag v1.0.2` and `git push origin v1.0.2`. The workflow can also be run manually from GitHub Actions; a manual run provides the EXE as a downloadable workflow artifact.
+Use a new version tag for each release. The workflow can also be run manually from GitHub Actions; a manual run provides the installer as a downloadable workflow artifact.
 
 ### Build the EXE from CMD
 
@@ -95,14 +83,8 @@ npm ci
 npm run package:win
 ```
 
-The portable executable is written to `release\Oman-Incident-Analytics-x64.exe`. Copy that file to a USB drive, then to the offline PC. To run it from CMD:
-
-```bat
-cd /d E:\OmanIncidentAnalytics
-Oman-Incident-Analytics-x64.exe
-```
-
-You can also double-click the EXE. On first launch, Windows SmartScreen may warn that the app is unsigned. The portable build is not code-signed.
+The installer is written to `release\Oman-Incident-Analytics-Setup-x64.exe`. Copy that file to a USB drive, then to the offline PC and run it there. The app is installed with its local model/runtime and can be launched from the desktop shortcut or Start menu.
+Windows SmartScreen may warn that the installer is unsigned.
 
 ### Run from source or build a web bundle
 

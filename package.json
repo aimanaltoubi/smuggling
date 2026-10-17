@@ -8,7 +8,7 @@
     "predev": "node scripts/copy-cesium-assets.js",
     "dev": "vite",
     "build": "node scripts/copy-cesium-assets.js && vite build",
-    "package:win": "npm run build && electron-builder --win portable --x64",
+    "package:win": "node scripts/download-offline-llm.js && npm run build && electron-builder --win nsis --x64",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
@@ -114,16 +114,31 @@
       "package.json",
       "!node_modules/**"
     ],
+    "extraResources": [
+      {
+        "from": "build/offline-llm",
+        "to": "offline-llm",
+        "filter": ["**/*"]
+      }
+    ],
+    "compression": "store",
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ],
-      "artifactName": "Oman-Incident-Analytics-x64.exe"
+      "artifactName": "Oman-Incident-Analytics-Setup-x64.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

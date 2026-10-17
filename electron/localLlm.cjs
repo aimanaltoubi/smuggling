@@ -8,16 +8,14 @@ let processHandle = null;
 let state = { status: 'checking', message: 'Checking for the optional local model.' };
 let apiPort = null;
 
-function installationDirectory(app) {
-  if (!app.isPackaged) return path.resolve(__dirname, '..');
-  return process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));
-}
-
 function getRuntimePaths(app) {
-  const runtimeDirectory = path.join(installationDirectory(app), 'llama-runtime');
+  const resourcesDirectory = app.isPackaged
+    ? path.join(process.resourcesPath, 'offline-llm')
+    : path.resolve(__dirname, '..', 'build', 'offline-llm');
+  const runtimeDirectory = path.join(resourcesDirectory, 'llama-runtime');
   const executable = process.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
   return {
-    modelPath: path.join(installationDirectory(app), MODEL_FILENAME),
+    modelPath: path.join(resourcesDirectory, MODEL_FILENAME),
     executablePath: path.join(runtimeDirectory, executable),
     runtimeDirectory,
   };

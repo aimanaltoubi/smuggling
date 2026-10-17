@@ -21,7 +21,7 @@ export default function LocalForecastExplanation({ facts }) {
           timer = window.setTimeout(checkStatus, 1500);
         }
       } catch {
-        if (!cancelled) setStatus({ status: "missing-runtime", message: "Offline explanations are available in the Windows app when the optional model is installed." });
+        if (!cancelled) setStatus({ status: "missing-runtime", message: "Offline explanations are included in the self-contained Windows installer; they are not available in browser development mode." });
       }
     };
     checkStatus();

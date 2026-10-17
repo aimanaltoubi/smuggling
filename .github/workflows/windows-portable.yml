@@ -1,4 +1,4 @@
-name: Windows portable app
+name: Windows offline installer
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build portable executable
+      - name: Build self-contained offline installer
         run: npm run package:win
 
       - name: Publish versioned release
@@ -33,12 +33,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: release/Oman-Incident-Analytics-x64.exe
+          files: release/Oman-Incident-Analytics-Setup-x64.exe
 
       - name: Upload executable for manual workflow runs
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: Oman-Incident-Analytics-x64
-          path: release/Oman-Incident-Analytics-x64.exe
+          name: Oman-Incident-Analytics-Setup-x64
+          path: release/Oman-Incident-Analytics-Setup-x64.exe
           if-no-files-found: error
