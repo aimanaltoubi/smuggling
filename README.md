@@ -59,11 +59,11 @@ The Windows x64 setup EXE contains the app, Electron runtime, local map assets, 
 
 Qwen 2.5 1.5B Instruct (Q4_K_M) runs through the bundled llama.cpp CPU runtime and generates short Arabic explanations in the strategic and tactical tabs. It receives forecast results and validation facts only; it cannot change forecasts. Its text may still be wrong and is commentary, not evidence. The model is Apache-2.0 licensed. No extra files or post-install downloads are needed.
 
-The Windows release workflow builds the model-inclusive installer when a `v*` version tag is pushed. The current `v1.0.1` release does not include these changes. After they are pushed, create `v1.0.2` from the repository:
+The Windows release workflow builds the model-inclusive installer when a `v*` version tag is pushed. The current `v1.0.1` release does not include these changes. After they are pushed, create `v1.0.3` from the repository:
 
 ```bat
-git tag v1.0.2
-git push origin v1.0.2
+git tag v1.0.3
+git push origin v1.0.3
 ```
 
 Use a new version tag for each release. The workflow can also be run manually from GitHub Actions; a manual run provides the installer as a downloadable workflow artifact.

@@ -8,7 +8,7 @@
     "predev": "node scripts/copy-cesium-assets.js",
     "dev": "vite",
     "build": "node scripts/copy-cesium-assets.js && vite build",
-    "package:win": "node scripts/download-offline-llm.js && npm run build && electron-builder --win nsis --x64",
+    "package:win": "node scripts/download-offline-llm.js && npm run build && electron-builder --win nsis --x64 --publish never",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
