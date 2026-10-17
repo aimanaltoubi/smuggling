@@ -144,10 +144,25 @@ function buildBorderSectors(incidents) {
 
 export default function IncidentMap({ incidents, height = 420 }) {
   const hasData = incidents && incidents.length > 0;
-  const shown = hasData ? incidents.slice(0, 400) : [];
+  const shown = hasData
+    ? incidents.filter((incident) => (
+      incident.latitude != null
+      && incident.longitude != null
+      && Number.isFinite(Number(incident.latitude))
+      && Number.isFinite(Number(incident.longitude))
+      && Number(incident.latitude) >= -90
+      && Number(incident.latitude) <= 90
+      && Number(incident.longitude) >= -180
+      && Number(incident.longitude) <= 180
+    ))
+    : [];
   const viewerRef = useRef(null);
-  const [view, setView] = useState("prio"); // "prio" | "sectors" | "points"
+  const [view, setView] = useState("points"); // "prio" | "sectors" | "points"
   const [horizon, setHorizon] = useState("14"); // "14" (two weeks) | "30" (one month)
+  const pointTypeCounts = useMemo(() => shown.reduce((counts, incident) => {
+    counts[incident.incident_type] = (counts[incident.incident_type] || 0) + 1;
+    return counts;
+  }, {}), [incidents, hasData]);
 
   const pred14 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 14 }) : null), [incidents, hasData]);
   const pred30 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 30 }) : null), [incidents, hasData]);
@@ -165,13 +180,13 @@ export default function IncidentMap({ incidents, height = 420 }) {
       OMAN_BOUNDS.latMax,
     );
     const mapUrl = new URL("offline-oman-map.svg", window.location.href).href;
+    viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#d9e9ec");
     Cesium.SingleTileImageryProvider.fromUrl(mapUrl, { rectangle })
       .then((provider) => {
         if (cancelled || viewer.isDestroyed()) {
           provider.destroy();
           return;
         }
-        viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#c9e0e7");
         viewer.imageryLayers.addImageryProvider(provider);
       })
       .catch((error) => console.error("Could not load the bundled offline map", error));
@@ -349,7 +364,7 @@ export default function IncidentMap({ incidents, height = 420 }) {
               key={idx}
               position={Cesium.Cartesian3.fromDegrees(inc.longitude, inc.latitude)}
               point={{
-                pixelSize: 6 + Math.min(8, (inc.detained_count || 1) / 2),
+                pixelSize: 9,
                 color: typeColor(inc.incident_type),
                 outlineColor: Cesium.Color.WHITE,
                 outlineWidth: 1,
@@ -388,6 +403,15 @@ export default function IncidentMap({ incidents, height = 420 }) {
         </Viewer>
         <MapOverlay viewerRef={viewerRef} items={overlayItems} />
       </div>
+
+      {view === "points" && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "#ff0000" }} />تهريب ({pointTypeCounts["تهريب"] || 0})</span>
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "#4169e1" }} />تسلل ({pointTypeCounts["تسلل"] || 0})</span>
+          {shown.length > (pointTypeCounts["تهريب"] || 0) + (pointTypeCounts["تسلل"] || 0) && <span>أنواع أخرى ({shown.length - (pointTypeCounts["تهريب"] || 0) - (pointTypeCounts["تسلل"] || 0)})</span>}
+          <span>المواقع المعروضة: {shown.length} من أصل {incidents?.length || 0} سجل</span>
+        </div>
+      )}
 
       {view === "prio" && prioGrid.length > 0 && activePrediction && (
         <p className="text-xs text-muted-foreground">

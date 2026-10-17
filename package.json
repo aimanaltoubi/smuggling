@@ -8,6 +8,7 @@
     "predev": "node scripts/copy-cesium-assets.js",
     "dev": "vite",
     "build": "node scripts/copy-cesium-assets.js && vite build",
+    "map:build": "node scripts/generate-offline-map.js",
     "package:win": "node scripts/download-offline-llm.js && npm run build && electron-builder --win nsis --x64 --publish never",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",

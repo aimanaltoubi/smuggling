@@ -53,17 +53,19 @@ Download the reproducible four-year synthetic sample from [`public/sample-incide
 
 ## Windows Offline Installer
 
-The Windows x64 setup EXE contains the app, Electron runtime, local map assets, llama.cpp CPU runtime, and Qwen model. It is a single file for transfer to the offline PC. Its download/install size is about 1.2 GB; allow at least 3 GB of free disk space while installing. The schematic basemap has no online tiles and is for orientation, not authoritative boundary reference.
+The Windows x64 setup EXE contains the app, Electron runtime, local map assets, llama.cpp CPU runtime, and Qwen model. It is a single file for transfer to the offline PC. Its download/install size is about 1.2 GB; allow at least 3 GB of free disk space while installing. The bundled basemap includes Natural Earth 1:10m country outlines and OpenStreetMap coastlines, governorate boundaries, principal roads, and major-place labels. It has no online tiles, does not include every local street, and is not an authoritative operational boundary reference. Natural Earth country data is public domain. OpenStreetMap data is credited to [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) and available under the Open Database License (ODbL).
+
+To refresh the bundled map from an internet-connected development machine, run `npm run map:build` and commit the updated `public/offline-oman-map.svg`.
 
 ### Optional offline forecast explanations
 
 Qwen 2.5 1.5B Instruct (Q4_K_M) runs through the bundled llama.cpp CPU runtime and generates short Arabic explanations in the strategic and tactical tabs. It receives forecast results and validation facts only; it cannot change forecasts. Its text may still be wrong and is commentary, not evidence. The model is Apache-2.0 licensed. No extra files or post-install downloads are needed.
 
-The Windows release workflow builds the model-inclusive installer when a `v*` version tag is pushed. The current `v1.0.1` release does not include these changes. After they are pushed, create `v1.0.3` from the repository:
+The Windows release workflow builds the model-inclusive installer when a `v*` version tag is pushed. The current `v1.0.3` release does not include the latest map changes. After they are pushed, create `v1.0.4` from the repository:
 
 ```bat
-git tag v1.0.3
-git push origin v1.0.3
+git tag v1.0.4
+git push origin v1.0.4
 ```
 
 Use a new version tag for each release. The workflow can also be run manually from GitHub Actions; a manual run provides the installer as a downloadable workflow artifact.
