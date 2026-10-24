@@ -51,6 +51,93 @@ Use the upload tab to select the CSV. The app validates required values, coordin
 
 Download the reproducible four-year synthetic sample from [`public/sample-incidents.csv`](public/sample-incidents.csv), or use the full-data download link in the app's upload tab. It contains no operational incident data; its seeded pattern has summer peaks, winter lows, five governorates, and mixed incident types. It is long enough to exercise forecasting and evaluation workflows.
 
+## Clean Arabic Excel or CSV Data Offline
+
+Use [scripts/clean_incidents.py](scripts/clean_incidents.py) before importing operational data. It reads `.xlsx` directly, so Arabic text does not pass through Excel's legacy CSV encoding. It also cleans existing CSV files. All processing stays on your PC; Microsoft Excel does not need to be installed.
+
+The cleaner creates a **new comma-separated UTF-8 CSV with a BOM**, which the app accepts and Excel can recognize as Unicode. It never overwrites an existing file or changes the source. It validates every non-empty record before writing; if any record fails, it prints row/column errors, exits with a nonzero status, and writes no output. Fix the source and rerun, using a new output filename if a previous output already exists. No records are silently dropped or deduplicated. Extra columns are preserved.
+
+### One-time Setup on Windows
+
+The cleaner requires Python 3.10 or newer. This is a separate preparation tool, not part of the installed app. Copy [scripts/clean_incidents.py](scripts/clean_incidents.py) to the offline PC, retaining the `scripts` folder for the commands below. Run CMD from the folder containing `scripts` and your dataset.
+
+On an internet-connected PC with Python, download the Excel reader and its dependency:
+
+```bat
+py -m pip download --only-binary=:all: --dest excel-wheels openpyxl==3.1.5
+```
+
+Transfer `excel-wheels` and, if needed, a Windows Python offline installer matching your offline PC to that PC using your approved transfer process. Install Python there, then install the Excel reader without internet:
+
+```bat
+py -m pip install --no-index --find-links=excel-wheels openpyxl==3.1.5
+```
+
+CSV-only cleaning uses Python's standard library and does not require `openpyxl`. Never upload operational datasets to an online converter.
+
+### Run the Cleaner from CMD
+
+For a workbook whose first row already contains the English headers listed above:
+
+```bat
+py scripts\clean_incidents.py "incidents.xlsx" "incidents-clean.csv"
+```
+
+The active worksheet is used by default. Select another worksheet explicitly when needed:
+
+```bat
+py scripts\clean_incidents.py "incidents.xlsx" "incidents-clean.csv" --sheet "Sheet1"
+```
+
+For an existing UTF-8 CSV, including dates such as `23-06-2025 13:87:02`:
+
+```bat
+py scripts\clean_incidents.py "incidents.csv" "incidents-clean.csv"
+```
+
+The date becomes `2025-06-23`. The time is deliberately ignored, even if invalid. Accepted Gregorian date forms are `DD-MM-YYYY`, `DD/MM/YYYY`, `YYYY-MM-DD`, `YYYY/MM/DD`, and native Excel date cells, optionally with times. **Day-first is always used when the year is last**: `03/04/2025` means 3 April, not March 4. US month-first dates and Hijri calendar dates must be converted explicitly before running this tool; they cannot be reliably inferred. Unformatted Excel serial numbers are rejected: format those cells as actual Excel dates first.
+
+### Map Arabic Column Headers
+
+Arabic **cell contents stay Arabic**. Only headers must match the app's English schema. If your source has Arabic headers, create a UTF-8 JSON file named `columns.json` with the exact source header on the left and the app header on the right. This is an example; replace the left-hand names with the actual names in your workbook:
+
+```json
+{
+	"رقم الواقعة": "incident_id",
+	"تاريخ الواقعة": "incident_date",
+	"الموقع": "location_name",
+	"المحافظة": "governorate",
+	"خط العرض": "latitude",
+	"خط الطول": "longitude",
+	"نوع الواقعة": "incident_type",
+	"عدد المضبوطين": "detained_count",
+	"الجنسية": "ethnicity",
+	"التفاصيل": "details"
+}
+```
+
+```bat
+py scripts\clean_incidents.py "incidents.xlsx" "incidents-clean.csv" --column-map "columns.json"
+```
+
+Reuse the same mapping for future files with that schema. The tool does not guess header meanings, invent missing coordinates, translate categories, or change governorate names. `incident_type` must already contain `تهريب` or `تسلل`; other labels require a verified source correction. The first row must be the header, without preceding titles or merged header cells. Convert legacy `.xls` workbooks to `.xlsx` first. Replace Excel formulas/errors with verified values before conversion. Store identifiers as text in Excel to preserve leading zeros; digits already lost by Excel cannot be recovered by this tool.
+
+### Encoding and Validation
+
+- Arabic and Persian digits in dates, coordinates, and counts become ASCII digits. Arabic decimal/thousands separators are supported; use a dot for other decimal values. Leading/trailing whitespace is trimmed, while Arabic spelling and interior text are preserved.
+- Missing required values, invalid calendar dates, out-of-range coordinates, invalid incident types, and negative/fractional detainee counts stop conversion. Blank records are ignored. Review the reported issues rather than filling them with guessed values.
+- For a CSV **known** to use Windows Arabic encoding, add `--encoding cp1256`. For a semicolon-separated input, add `--delimiter ";"`. These options affect input only; output is always comma-separated UTF-8. Do not guess an encoding merely because decoding succeeds.
+- If text already contains `???` or the Unicode replacement character, the cleaner flags possible data loss. Encoding changes cannot restore those characters: return to the original Excel workbook or an intact backup. Other pre-existing garbled text cannot always be detected automatically.
+- If exporting manually from Excel, choose **CSV UTF-8 (Comma delimited)**, not legacy **CSV (Comma delimited)**. After cleaning, upload `incidents-clean.csv` directly; resaving it through a legacy encoding can damage Arabic again.
+
+No cleaner can guarantee the factual accuracy of arbitrary datasets. This workflow validates the app's import requirements, not whether locations, classifications, or incident facts are correct. Inspect a representative sample and the row count before operational use.
+
+Developer regression check (Python, `openpyxl`, and the project's Node dependencies installed):
+
+```bash
+python -m unittest discover -s scripts -p 'test_clean_incidents.py' -v
+```
+
 ## Windows Offline Installer
 
 The Windows x64 setup EXE contains the app, Electron runtime, local map assets, llama.cpp CPU runtime, and Qwen model. It is a single file for transfer to the offline PC. Its download/install size is about 1.2 GB; allow at least 3 GB of free disk space while installing. The bundled basemap includes Natural Earth 1:10m country outlines and OpenStreetMap coastlines, governorate boundaries, principal roads, and major-place labels. It has no online tiles, does not include every local street, and is not an authoritative operational boundary reference. Natural Earth country data is public domain. OpenStreetMap data is credited to [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) and available under the Open Database License (ODbL).
