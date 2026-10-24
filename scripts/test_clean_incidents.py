@@ -3,7 +3,9 @@ import csv
 from datetime import datetime
 import io
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -135,6 +137,111 @@ class CleaningTests(unittest.TestCase):
                 self.assertEqual(main([str(source), str(output), "--sheet", "Incidents"]), 1)
             self.assertIn("H2", errors.getvalue())
             self.assertFalse(output.exists())
+
+
+class PowerShellCleaningTests(unittest.TestCase):
+    record = CleaningTests.record
+
+    @classmethod
+    def setUpClass(cls):
+        cls.executable = os.environ.get("POWERSHELL_EXE") or shutil.which("pwsh") or shutil.which("powershell.exe")
+        if not cls.executable:
+            raise unittest.SkipTest("PowerShell is not available; set POWERSHELL_EXE to test it")
+
+    def invoke(self, source, output, *options):
+        script = Path(__file__).with_name("clean_incidents.ps1").resolve()
+        return subprocess.run([
+            self.executable, "-NoProfile", "-File", str(script),
+            "-InputPath", str(source), "-OutputPath", str(output), *options,
+        ], capture_output=True, text=True, encoding="utf-8")
+
+    def test_csv_arabic_mapping_and_app_importer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / "source.csv", Path(directory) / "clean.csv"
+            mapping = Path(directory) / "columns.json"
+            headers = list(REQUIRED) + ["details"]
+            headers[1] = "\u0627\u0644\u062a\u0627\u0631\u064a\u062e"
+            mapping.write_text(json.dumps({headers[1]: "incident_date"}), encoding="utf-8")
+            details = 'Arabic text, "quoted"\nnext line'
+            with source.open("w", encoding="utf-8", newline="") as handle:
+                csv.writer(handle).writerows([headers, self.record() + [details]])
+            original = source.read_bytes()
+            result = self.invoke(source, output, "-ColumnMap", str(mapping))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(source.read_bytes(), original)
+            self.assertTrue(output.read_bytes().startswith(b"\xef\xbb\xbf"))
+            with output.open(encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(rows[0]["incident_date"], "2025-06-23")
+            self.assertEqual(rows[0]["latitude"], "24.3")
+            self.assertEqual(rows[0]["detained_count"], "3")
+            self.assertEqual(rows[0]["location_name"], self.record()[2])
+            self.assertEqual(rows[0]["details"], details)
+            result = subprocess.run([
+                "node", "--input-type=module", "-e",
+                "import { readFileSync } from 'node:fs'; "
+                "import { parseIncidentCsv } from './src/lib/analytics/csvImport.js'; "
+                "const result = await parseIncidentCsv({text: async () => readFileSync(process.argv[1], 'utf8')}); "
+                "console.log(JSON.stringify(result));", str(output),
+            ], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads(result.stdout)["errors"], [])
+            self.assertNotEqual(self.invoke(source, output).returncode, 0)
+
+    def test_invalid_records_do_not_write_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / "source.csv", Path(directory) / "clean.csv"
+            for field, value in (("incident_date", "31-02-2025"), ("latitude", "91"), ("detained_count", "-1"), ("detained_count", "1.5"), ("location_name", "???"), ("incident_type", "unknown")):
+                record = self.record()
+                record[list(REQUIRED).index(field)] = value
+                with source.open("w", encoding="utf-8", newline="") as handle:
+                    csv.writer(handle).writerows([REQUIRED, record])
+                result = self.invoke(source, output)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(field, result.stderr)
+                self.assertFalse(output.exists())
+
+    def test_legacy_encoding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / "source.csv", Path(directory) / "clean.csv"
+            record = self.record()
+            record[4], record[7] = "24.3", "3"
+            with source.open("w", encoding="cp1256", newline="") as handle:
+                csv.writer(handle, delimiter=";").writerows([REQUIRED, record])
+            result = self.invoke(source, output, "-CodePage", "1256", "-Delimiter", ";")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(record[2], output.read_text(encoding="utf-8-sig"))
+
+    def test_xlsx_dates_and_formula_rejection(self):
+        try:
+            from openpyxl import Workbook
+            from openpyxl.utils.datetime import CALENDAR_MAC_1904
+        except ImportError:
+            self.skipTest("openpyxl is required only for generating Excel test fixtures")
+        with tempfile.TemporaryDirectory() as directory:
+            for calendar in (None, CALENDAR_MAC_1904):
+                source, output = Path(directory) / "source.xlsx", Path(directory) / f"clean-{calendar is None}.csv"
+                workbook = Workbook()
+                if calendar:
+                    workbook.epoch = calendar
+                worksheet = workbook.create_sheet("Incidents")
+                worksheet.append(list(REQUIRED))
+                record = self.record()
+                record[1] = datetime(2025, 6, 23, 13, 2)
+                worksheet.append(record)
+                workbook.save(source)
+                result = self.invoke(source, output, "-Sheet", "Incidents")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with output.open(encoding="utf-8-sig", newline="") as handle:
+                    rows = list(csv.DictReader(handle))
+                self.assertEqual(rows[0]["incident_date"], "2025-06-23")
+                self.assertEqual(rows[0]["location_name"], record[2])
+                worksheet["H2"] = "=1+2"
+                workbook.save(source)
+                formula_output = output.with_name("formula.csv")
+                result = self.invoke(source, formula_output, "-Sheet", "Incidents")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("H2", result.stderr)
+                self.assertFalse(formula_output.exists())
 
 
 if __name__ == "__main__":
