@@ -4,7 +4,8 @@ param(
     [string]$ColumnMap,
     [string]$Sheet,
     [int]$CodePage = 65001,
-    [string]$Delimiter = ','
+    [string]$Delimiter = ',',
+    [ValidateSet('wgs84', 'web-mercator')][string]$CoordinateSystem = 'wgs84'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,9 +45,16 @@ function Convert-IncidentNumber([string]$Value, [string]$Field) {
         }
         return $number.ToString('0', $culture)
     }
+    if ($CoordinateSystem -eq 'web-mercator') {
+        $limit = [math]::PI * 6378137
+        if ([math]::Abs($number) -gt [decimal]$limit) { throw 'Web Mercator coordinate must be within +/-20037508.342789244 metres' }
+        $projected = [double]$number / 6378137
+        if ($Field -eq 'latitude') { $projected = [math]::Atan([math]::Sinh($projected)) }
+        return ($projected * 180 / [math]::PI).ToString('F8', $culture)
+    }
     $limit = 180
     if ($Field -eq 'latitude') { $limit = 90 }
-    if ([math]::Abs($number) -gt $limit) { throw "must be between -$limit and $limit" }
+    if ([math]::Abs($number) -gt $limit) { throw "must be between -$limit and $limit in degrees; projected coordinates require a verified source CRS" }
     return $number.ToString($culture)
 }
 
@@ -232,6 +240,9 @@ try {
         foreach ($field in @('latitude', 'longitude', 'detained_count')) {
             try { $row[$field] = Convert-IncidentNumber $row[$field] $field }
             catch { $problems.Add("Row ${number}, ${field}: $($_.Exception.Message)") }
+        }
+        foreach ($type in $types) {
+            if ($row['incident_type'] -ceq ((-join ([char[]]@(0x627, 0x644))) + $type)) { $row['incident_type'] = $type }
         }
         if ($types -cnotcontains $row['incident_type']) { $problems.Add("Row ${number}, incident_type: must be the Arabic value for smuggling or infiltration") }
         $cleaned.Add([pscustomobject]$row)

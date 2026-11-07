@@ -73,6 +73,24 @@ IncidentData\
 
 The commands below launch Windows PowerShell with a process-only execution-policy setting; they do not permanently change your PC's policy. Only run scripts you have reviewed and trust. If your organization blocks scripts through Group Policy or application control, ask your administrator for an approved execution method; these commands do not override those controls. Never upload operational datasets to an online converter.
 
+### Download Excel Mock
+
+**[Download the Excel mock with 120 records](https://github.com/aimanaltoubi/smuggling/raw/refs/heads/main/public/mock-incidents.xlsx)** to test the cleaning and import workflow locally. The workbook is stored at [public/mock-incidents.xlsx](public/mock-incidents.xlsx) and uses exactly these columns:
+
+```text
+incident_id incident_date location_name governorate latitude longitude incident_type detained_count ethnicity details
+```
+
+It contains 120 synthetic records across 2026 based on the supplied data format, including `ولاية محضة`, `محافظة البريمي - Al Buraymi Governorate`, native Excel timestamps, the text timestamp `2026-05-11 13:54:46`, Arabic values, both incident types (including `التسلل`), and the projected coordinate values `2792851.872` and `6240057.303`. It is not operational data and does not establish forecast accuracy.
+
+For offline user testing, transfer the workbook and the updated [scripts/clean_incidents.ps1](scripts/clean_incidents.ps1) to the test PC. With the repository's folder layout, run:
+
+```bat
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath ".\public\mock-incidents.xlsx" -OutputPath "mock-incidents-clean.csv" -Sheet "Incidents" -CoordinateSystem "web-mercator"
+```
+
+Expect `Saved 120 records`, date-only values, normalized `تهريب`/`تسلل`, and coordinates near `24.323, 56.055`. Upload the resulting CSV, not the Excel workbook, to the app. Compare with [public/mock-incidents-clean.csv](public/mock-incidents-clean.csv), the expected cleaned output. The mock is explicitly defined as EPSG:3857; this does not establish the CRS of your real dataset. Use a new output filename when rerunning. Developers with `openpyxl` can regenerate the workbook using [scripts/generate-cleaning-mock.py](scripts/generate-cleaning-mock.py) when the destination does not already exist.
+
 ### Run from CMD or PowerShell
 
 For a workbook whose first row already contains the English headers listed above:
@@ -118,7 +136,19 @@ Arabic **cell contents stay Arabic**. Only headers must match the app's English 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath "incidents.xlsx" -OutputPath "incidents-clean.csv" -ColumnMap "columns.json"
 ```
 
-Reuse the same mapping for future files with that schema. The tool does not guess header meanings, invent missing coordinates, translate categories, or change governorate names. `incident_type` must already contain `تهريب` or `تسلل`; other labels require a verified source correction. The first row must be the header, without preceding titles or merged header cells. Convert legacy `.xls` workbooks to `.xlsx` first. Replace Excel formulas/errors with verified values before conversion. Store identifiers as text in Excel to preserve leading zeros; digits already lost by Excel cannot be recovered by this tool.
+Reuse the same mapping for future files with that schema. The tool does not guess header meanings, invent missing coordinates, translate categories, or change governorate names. `incident_type` accepts `تهريب` or `تسلل` and normalizes the definite-article variants `التهريب` and `التسلل` to those app values; other labels require a verified source correction. The first row must be the header, without preceding titles or merged header cells. Convert legacy `.xls` workbooks to `.xlsx` first. Replace Excel formulas/errors with verified values before conversion. Store identifiers as text in Excel to preserve leading zeros; digits already lost by Excel cannot be recovered by this tool.
+
+### Projected Coordinates
+
+By default, `latitude` and `longitude` must be WGS84 decimal degrees, not metres. Values such as `2792851.872` and `6240057.303` are outside that range and resemble projected coordinates. Confirm the coordinate reference system (CRS) with the dataset provider or GIS export settings before converting; the numbers alone do not identify it reliably.
+
+For a source **confirmed to use Web Mercator (EPSG:3857)**, with northing (Y) in `latitude` and easting (X) in `longitude`, run:
+
+```bat
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath "incidents.xlsx" -OutputPath "incidents-clean.csv" -CoordinateSystem "web-mercator"
+```
+
+This converts all coordinates in the file from metres to WGS84 degrees. The example above becomes approximately `24.323` latitude and `56.055` longitude. This interpretation is conditional on the confirmed source CRS, not proof of the incident's location. Do not use this option for UTM, another projection, or mixed coordinate systems; export those sources as WGS84 decimal degrees with a trusted offline GIS tool first. If the X/Y columns are reversed, correct the headers or column mapping first. The Python cleaner supports the same conversion with `--coordinate-system web-mercator`.
 
 ### Encoding and Validation
 

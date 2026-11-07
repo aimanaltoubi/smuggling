@@ -5,6 +5,7 @@ import csv
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -41,7 +42,7 @@ def clean_date(value):
     return date(year, month, day).isoformat()
 
 
-def clean_number(value, field):
+def clean_number(value, field, coordinate_system="wgs84"):
     value = text(value).translate(DIGITS).replace("\u066b", ".").replace("\u066c", "")
     try:
         number = Decimal(value)
@@ -55,9 +56,16 @@ def clean_number(value, field):
         if number > 9007199254740991:
             raise ValueError("exceeds JavaScript's safe integer range")
         return str(int(number))
+    if coordinate_system == "web-mercator":
+        limit = math.pi * 6378137
+        if abs(number) > Decimal(str(limit)):
+            raise ValueError("Web Mercator coordinate must be within +/-20037508.342789244 metres")
+        projected = float(number) / 6378137
+        degrees = math.degrees(math.atan(math.sinh(projected)) if field == "latitude" else projected)
+        return f"{degrees:.8f}"
     limit = 90 if field == "latitude" else 180
     if abs(number) > limit:
-        raise ValueError(f"must be between {-limit} and {limit}")
+        raise ValueError(f"must be between {-limit} and {limit} in degrees; projected coordinates require a verified source CRS")
     return format(number, "f")
 
 
@@ -93,7 +101,9 @@ def read_table(source, encoding, delimiter, sheet):
         workbook.close()
 
 
-def clean_table(table, mapping):
+def clean_table(table, mapping, coordinate_system="wgs84"):
+    if coordinate_system not in {"wgs84", "web-mercator"}:
+        raise ValueError("unsupported coordinate system")
     if not table:
         raise ValueError("input is empty")
     headers = [mapping.get(text(value).lstrip("\ufeff"), text(value).lstrip("\ufeff")) for value in table[0]]
@@ -124,9 +134,11 @@ def clean_table(table, mapping):
             errors.append(f"Row {row_number}, incident_date: {error}")
         for field in ("latitude", "longitude", "detained_count"):
             try:
-                row[field] = clean_number(row[field], field)
+                row[field] = clean_number(row[field], field, coordinate_system)
             except ValueError as error:
                 errors.append(f"Row {row_number}, {field}: {error}")
+        if row["incident_type"] in {"\u0627\u0644" + category for category in INCIDENT_TYPES}:
+            row["incident_type"] = row["incident_type"][2:]
         if row["incident_type"] not in INCIDENT_TYPES:
             errors.append(f"Row {row_number}, incident_type: must be the Arabic value for smuggling or infiltration")
         cleaned.append(row)
@@ -145,6 +157,8 @@ def main(argv=None):
     parser.add_argument("--sheet", help="Excel worksheet name; defaults to the active worksheet")
     parser.add_argument("--encoding", default="utf-8-sig", help="CSV input encoding, e.g. cp1256; output is always UTF-8")
     parser.add_argument("--delimiter", default=",", help="CSV input delimiter; output always uses commas")
+    parser.add_argument("--coordinate-system", choices=("wgs84", "web-mercator"), default="wgs84",
+                        help="source CRS: wgs84 degrees (default) or verified EPSG:3857 metres; latitude holds northing and longitude easting")
     args = parser.parse_args(argv)
     try:
         if args.input.resolve() == args.output.resolve() or args.output.exists():
@@ -157,7 +171,7 @@ def main(argv=None):
         if not isinstance(mapping, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in mapping.items()):
             raise ValueError("column map must be a JSON object with string keys and values")
         table = read_table(args.input, args.encoding, args.delimiter, args.sheet)
-        headers, rows = clean_table(table, mapping)
+        headers, rows = clean_table(table, mapping, args.coordinate_system)
         with args.output.open("x", encoding="utf-8-sig", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=headers)
             writer.writeheader()

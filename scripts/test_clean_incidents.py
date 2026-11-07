@@ -45,6 +45,42 @@ class CleaningTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate"):
             clean_table([list(REQUIRED) + ["incident_date"]], {})
 
+    def test_definite_article_incident_types(self):
+        for category in ("\u062a\u0647\u0631\u064a\u0628", "\u062a\u0633\u0644\u0644"):
+            record = self.record()
+            record[6] = "\u0627\u0644" + category
+            _, rows = clean_table([REQUIRED, record], {})
+            self.assertEqual(rows[0]["incident_type"], category)
+
+    def test_projected_coordinates_require_explicit_crs(self):
+        record = self.record()
+        record[1], record[4], record[5], record[6] = "2026-05-11 13:54:46", "2792851.872", "6240057.303", "\u0627\u0644\u062a\u0633\u0644\u0644"
+        with self.assertRaisesRegex(ValueError, "verified source CRS"):
+            clean_table([REQUIRED, record], {})
+        _, rows = clean_table([REQUIRED, record], {}, "web-mercator")
+        self.assertAlmostEqual(float(rows[0]["latitude"]), 24.321, places=2)
+        self.assertAlmostEqual(float(rows[0]["longitude"]), 56.055, places=2)
+        self.assertEqual(rows[0]["incident_date"], "2026-05-11")
+        self.assertEqual(rows[0]["incident_type"], "\u062a\u0633\u0644\u0644")
+        for field in (4, 5):
+            for value in ("NaN", "Infinity", "20037509", "-20037509"):
+                invalid = record.copy()
+                invalid[field] = value
+                with self.assertRaises(ValueError):
+                    clean_table([REQUIRED, invalid], {}, "web-mercator")
+
+    def test_web_mercator_origin_and_negative_coordinates(self):
+        record = self.record()
+        for latitude, longitude in (("0", "0"), ("-2792851.872", "-6240057.303")):
+            record[4], record[5] = latitude, longitude
+            _, rows = clean_table([REQUIRED, record], {}, "web-mercator")
+            if latitude == "0":
+                self.assertEqual(float(rows[0]["latitude"]), 0)
+                self.assertEqual(float(rows[0]["longitude"]), 0)
+            else:
+                self.assertAlmostEqual(float(rows[0]["latitude"]), -24.321, places=2)
+                self.assertAlmostEqual(float(rows[0]["longitude"]), -56.055, places=2)
+
     def test_csv_cli_and_app_importer(self):
         with tempfile.TemporaryDirectory() as directory:
             source, output = Path(directory) / "source.csv", Path(directory) / "clean.csv"
@@ -77,6 +113,29 @@ class CleaningTests(unittest.TestCase):
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(main([str(source), str(output)]), 1)
             self.assertFalse(output.exists())
+
+    def test_projected_csv_cli_and_app_importer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / "source.csv", Path(directory) / "clean.csv"
+            record = self.record()
+            record[1], record[4], record[5], record[6] = "2026-05-11 13:54:46", "2792851.872", "6240057.303", "\u0627\u0644\u062a\u0633\u0644\u0644"
+            with source.open("w", encoding="utf-8", newline="") as handle:
+                csv.writer(handle).writerows([REQUIRED, record])
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(main([str(source), str(output)]), 1)
+            self.assertFalse(output.exists())
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main([str(source), str(output), "--coordinate-system", "web-mercator"]), 0)
+            result = subprocess.run([
+                "node", "--input-type=module", "-e",
+                "import { readFileSync } from 'node:fs'; "
+                "import { parseIncidentCsv } from './src/lib/analytics/csvImport.js'; "
+                "const result = await parseIncidentCsv({text: async () => readFileSync(process.argv[1], 'utf8')}); "
+                "console.log(JSON.stringify(result));", str(output),
+            ], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=True)
+            imported = json.loads(result.stdout)
+            self.assertEqual(imported["errors"], [])
+            self.assertEqual(len(imported["rows"]), 1)
 
     def test_legacy_csv_encoding_delimiter_and_mapping(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -138,6 +197,24 @@ class CleaningTests(unittest.TestCase):
             self.assertIn("H2", errors.getvalue())
             self.assertFalse(output.exists())
 
+    def test_shipped_excel_mock(self):
+        source = Path(__file__).resolve().parents[1] / "public" / "mock-incidents.xlsx"
+        expected = source.with_name("mock-incidents-clean.csv")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "clean.csv"
+            original = source.read_bytes()
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main([str(source), str(output), "--sheet", "Incidents", "--coordinate-system", "web-mercator"]), 0)
+            self.assertEqual(source.read_bytes(), original)
+            self.assertEqual(output.read_bytes(), expected.read_bytes())
+            with output.open(encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(len(rows), 120)
+            self.assertEqual(len({row["incident_id"] for row in rows}), 120)
+            self.assertEqual(rows[4]["incident_date"], "2026-05-11")
+            self.assertEqual(rows[4]["latitude"], "24.32328749")
+            self.assertEqual(rows[4]["longitude"], "56.05538849")
+
 
 class PowerShellCleaningTests(unittest.TestCase):
     record = CleaningTests.record
@@ -154,6 +231,18 @@ class PowerShellCleaningTests(unittest.TestCase):
             self.executable, "-NoProfile", "-File", str(script),
             "-InputPath", str(source), "-OutputPath", str(output), *options,
         ], capture_output=True, text=True, encoding="utf-8")
+
+    def test_shipped_excel_mock(self):
+        source = Path(__file__).resolve().parents[1] / "public" / "mock-incidents.xlsx"
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "clean.csv"
+            result = self.invoke(source, output, "-Sheet", "Incidents", "-CoordinateSystem", "web-mercator")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with output.open(encoding="utf-8-sig", newline="") as handle:
+                actual = list(csv.DictReader(handle))
+            with source.with_name("mock-incidents-clean.csv").open(encoding="utf-8-sig", newline="") as handle:
+                expected = list(csv.DictReader(handle))
+            self.assertEqual(actual, expected)
 
     def test_csv_arabic_mapping_and_app_importer(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -199,6 +288,29 @@ class PowerShellCleaningTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(field, result.stderr)
                 self.assertFalse(output.exists())
+
+    def test_projected_coordinates_and_definite_article(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / "source.csv", Path(directory) / "clean.csv"
+            for category in ("\u062a\u0647\u0631\u064a\u0628", "\u062a\u0633\u0644\u0644"):
+                record = self.record()
+                record[4], record[5], record[6] = "2792851.872", "6240057.303", "\u0627\u0644" + category
+                with source.open("w", encoding="utf-8", newline="") as handle:
+                    csv.writer(handle).writerows([REQUIRED, record])
+                result = self.invoke(source, output)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("verified source CRS", result.stderr)
+                self.assertNotIn("incident_type:", result.stderr)
+                self.assertFalse(output.exists())
+                result = self.invoke(source, output, "-CoordinateSystem", "web-mercator")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with output.open(encoding="utf-8-sig", newline="") as handle:
+                    row = next(csv.DictReader(handle))
+                self.assertAlmostEqual(float(row["latitude"]), 24.321, places=2)
+                self.assertAlmostEqual(float(row["longitude"]), 56.055, places=2)
+                self.assertEqual(row["incident_type"], category)
+                self.assertEqual(row["detained_count"], "3")
+                output.unlink()
 
     def test_legacy_encoding(self):
         with tempfile.TemporaryDirectory() as directory:
