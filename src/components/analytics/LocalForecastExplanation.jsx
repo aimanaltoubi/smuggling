@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 
 function reportParagraph({ children }) {
   return <p>{React.Children.map(children, child => typeof child === "string"
-    ? child.split(/(\d{4}-\d{2}-\d{2})/).map((part, index) => /^\d{4}-\d{2}-\d{2}$/.test(part) ? <bdi key={index} dir="ltr" className="whitespace-nowrap">{part}</bdi> : part)
+    ? child.split(/(\d{4}-\d{2}(?:-\d{2})?)/).map((part, index) => /^\d{4}-\d{2}(?:-\d{2})?$/.test(part) ? <bdi key={index} dir="ltr" className="whitespace-nowrap">{part}</bdi> : part)
     : child)}</p>;
 }
 
@@ -19,6 +19,7 @@ export default function LocalForecastExplanation({ facts }) {
   const factsJson = JSON.stringify(facts);
 
   useEffect(() => {
+    window.dispatchEvent(new CustomEvent("system-forecast-facts", { detail: facts }));
     requestRef.current?.abort();
     setExplanation("");
     setMethod("");

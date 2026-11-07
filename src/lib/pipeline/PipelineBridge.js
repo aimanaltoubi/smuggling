@@ -13,6 +13,7 @@
 import { runPipeline } from "./pipeline";
 import TacticalForecast from '@/lib/pipeline/TacticalForecast';
 import { toMonthId, monthIdToDate } from "./ViewsDataLoader";
+import { buildMonthlyObservationSeries } from "../analytics/reportEvidence";
 
 const DAY_MS = 24 * 3600 * 1000;
 const MONTHS_AR = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
@@ -30,15 +31,10 @@ function monthIdToPeriod(mid) {
 
 // Historical monthly series from raw incidents (replaces analytics/forecasting.buildMonthlySeries)
 function buildHistoricalMonthly(incidents, metric) {
-  const map = {};
-  for (const r of incidents) {
-    if (!r.incident_date || isNaN(new Date(r.incident_date))) continue;
-    const mid = toMonthId(r.incident_date);
-    if (!map[mid]) map[mid] = { month_id: mid, period: monthIdToPeriod(mid), date: monthIdToDate(mid), incidents: 0, detained: 0 };
-    map[mid].incidents += 1;
-    map[mid].detained += r.detained_count || 0;
-  }
-  return Object.values(map).sort((a, b) => a.month_id - b.month_id);
+  return buildMonthlyObservationSeries(incidents).map(month => {
+    const monthId = toMonthId(`${month.label}-01T00:00:00Z`);
+    return { month_id: monthId, period: month.label, date: monthIdToDate(monthId), incidents: month.incidents, detained: month.detained };
+  });
 }
 
 // Sum pipeline projections across entities → one total per month

@@ -142,6 +142,7 @@ export default function PredictionSection({ incidents }) {
         observationEnd: prediction.dataEndpoint.lastDateLabel,
         window: { start: prediction.forecastWindow.startLabel, end: prediction.forecastWindow.endLabel, days: prediction.forecastWindow.days },
         expectedIncidentTotal: prediction.when.totalExpectedIncidents,
+        recentDailyRate: prediction.model.recentDailyRate,
         dailyIncidentForecast: prediction.when.dailyBreakdown.map(day => ({ date: day.label, expectedIncidents: day.expected })),
         peakDay: { date: prediction.when.peakDay.label, expectedIncidents: prediction.when.peakDay.expected },
         expectedDetaineeTotal: prediction.howMany.expectedTotalDetained,

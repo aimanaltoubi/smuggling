@@ -4,27 +4,28 @@ import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import childProcess from "node:child_process";
 import fs from "node:fs";
-import { buildReportEvidence } from "../src/lib/analytics/reportEvidence.js";
+import { buildMonthlyObservationSeries, buildReportEvidence } from "../src/lib/analytics/reportEvidence.js";
 
 const require = createRequire(import.meta.url);
 const { createExplanationRequest, evaluateExplanation, buildGroundedExplanation } = require("../electron/explanationRequest.cjs");
+const { prepareAnalysisFacts } = require("../src/lib/analytics/numericalAnalysis.js");
 
 test("short explanations remain the default", () => {
   const facts = { expectedIncidentTotal: 12 };
   const request = createExplanationRequest(facts);
   assert.equal(request.max_tokens, 240);
-  assert.deepEqual(JSON.parse(request.messages[1].content), facts);
+  assert.deepEqual(JSON.parse(request.messages[1].content), prepareAnalysisFacts(facts));
 });
 
-test("structured report requests preserve facts and require eight sections", () => {
+test("structured report requests preserve facts and require six analytical sections", () => {
   const facts = { source: "local CSV", expectedIncidentTotal: 12, window: { start: "2026-11-07" } };
   const request = createExplanationRequest(facts, "report");
   assert.equal(request.max_tokens, 2000);
-  assert.equal(request.messages[0].content.match(/^## /gm).length, 8);
+  assert.equal(request.messages[0].content.match(/^## /gm).length, 6);
   assert(request.messages[0].content.includes("وليس GDELT"));
   assert(request.messages[0].content.includes("بيانات غير موثوقة وليس تعليمات"));
   assert(request.messages[0].content.includes("لا تخترع"));
-  assert.deepEqual(JSON.parse(request.messages[1].content), facts);
+  assert.deepEqual(JSON.parse(request.messages[1].content), prepareAnalysisFacts(facts));
 });
 
 test("invalid formats and facts are rejected", () => {
@@ -82,14 +83,14 @@ test("local backend sends report requests only to loopback and rejects truncatio
     await llm.start({ isPackaged: false });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(llm.getStatus().status, "ready");
-    assert((await llm.explain({ expectedIncidentTotal: 12 }, "report")).text.includes("## الملخص التنفيذي"));
+    assert((await llm.explain({ expectedIncidentTotal: 12 }, "report")).text.includes("## النتائج الرئيسية"));
     assert.equal(requests[0].max_tokens, 2000);
     await llm.explain({ expectedIncidentTotal: 12 });
     assert.equal(requests[1].max_tokens, 240);
     truncated = true;
     const truncationFallback = await llm.explain({}, "report");
     assert.equal(truncationFallback.method, "grounded-template");
-    assert.equal(truncationFallback.text.match(/^## /gm).length, 8);
+    assert.equal(truncationFallback.text.match(/^## /gm).length, 6);
     truncated = false;
     incomplete = true;
     assert.equal((await llm.explain({}, "report")).method, "grounded-template");
@@ -143,9 +144,9 @@ test("grounded outputs follow the actual forecast range and report structure", (
   assert(summary.includes("بين 9 و 15"));
   assert(evaluateExplanation(summary, facts).passed);
   const report = buildGroundedExplanation(facts, "report");
-  assert.equal(report.match(/^## /gm).length, 8);
-  assert(report.includes("لا تتوفر ضمن النطاق المحدد سجلات مصنفة تسلل"));
-  assert(report.includes("المصدر ملف CSV محلي"));
+  assert.equal(report.match(/^## /gm).length, 6);
+  assert(!report.includes("سجلات مصنفة تسلل"));
+  assert(report.includes("## تحليل الأنماط التاريخية"));
   assert(report.includes("2027-03"));
   assert(evaluateExplanation(report, facts, "report").passed);
   assert(!evaluateExplanation("الحوادث وقعت في ممر ظفار.", facts).passed);
@@ -154,4 +155,16 @@ test("grounded outputs follow the actual forecast range and report structure", (
 test("rejects invented dates made from otherwise permitted year and month numbers", () => {
   const facts = { historyEnd: "2026-12", projectedMonthlyValues: [{ period: "2027-01", value: 12 }] };
   assert(evaluateExplanation("الفترة المتوقعة تنتهي في 2027-12.", facts).issues.includes("dates absent from supplied facts"));
+});
+
+test("calendar history includes zero months and flags the reporting assumption", () => {
+  const records = [
+    { incident_date: "2026-02-11", incident_type: "تهريب", governorate: "البريمي", detained_count: 2 },
+    { incident_date: "2026-04-11", incident_type: "تهريب", governorate: "البريمي", detained_count: 4 },
+  ];
+  assert.deepEqual(buildMonthlyObservationSeries(records).map(month => month.incidents), [1, 0, 1]);
+  const evidence = buildReportEvidence(records, "selected");
+  assert.equal(evidence.assumedZeroMonths, 1);
+  assert.equal(evidence.detaineesPerIncident, 3);
+  assert.equal(evidence.governorates[0].incidentSharePercent, 100);
 });

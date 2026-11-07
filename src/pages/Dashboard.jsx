@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ShieldCheck, BarChart3, TrendingUp, Target, Upload, ClipboardCheck } from "lucide-react";
+import { ShieldCheck, BarChart3, TrendingUp, Target, Upload, ClipboardCheck, Workflow } from "lucide-react";
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 import OverviewSection from "@/components/analytics/OverviewSection";
 import EdaSection from "@/components/analytics/EdaSection";
@@ -7,6 +7,8 @@ import ForecastSection from "@/components/analytics/ForecastSection";
 import PredictionSection from "@/components/analytics/PredictionSection";
 import DataUploadSection from "@/components/analytics/DataUploadSection";
 import EvaluationSection from "@/components/analytics/EvaluationSection";
+import SystemGuideSection from "@/components/analytics/SystemGuideSection";
+import FloatingSystemChat from "@/components/analytics/FloatingSystemChat";
 
 const TABS = [
   { id: "overview", label: "نظرة عامة", icon: BarChart3 },
@@ -15,6 +17,7 @@ const TABS = [
   { id: "prediction", label: "التنبؤ بالحدث القادم", icon: Target },
   { id: "upload", label: "رفع البيانات", icon: Upload },
   { id: "evaluation", label: "تقييم النموذج", icon: ClipboardCheck },
+  { id: "system", label: "النماذج وآلية العمل", icon: Workflow },
 ];
 
 export default function Dashboard() {
@@ -49,7 +52,7 @@ export default function Dashboard() {
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id)}
-                  disabled={!incidents && t.id !== "upload"}
+                  disabled={!incidents && !["upload", "system"].includes(t.id)}
                   className={`flex items-center gap-2 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 transition-colors ${
                     activeTab === t.id ? "border-slate-900 text-slate-900 font-medium" : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
@@ -71,7 +74,9 @@ export default function Dashboard() {
         {incidents && activeTab === "forecast" && <ForecastSection incidents={incidents} />}
         {incidents && activeTab === "prediction" && <PredictionSection incidents={incidents} />}
         {incidents && activeTab === "evaluation" && <EvaluationSection incidents={incidents} />}
+        {activeTab === "system" && <SystemGuideSection />}
       </main>
+      <FloatingSystemChat incidents={incidents} prediction={prediction} activeTab={activeTab} />
     </div>
   );
 }
