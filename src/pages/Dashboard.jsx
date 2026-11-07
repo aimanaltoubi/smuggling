@@ -34,7 +34,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-slate-800" />
             <div>
-              <h1 className="font-bold text-lg">نظام التوقع والتنبؤ - حدود سلطنة عمان</h1>
+              <h1 className="font-bold text-lg">نظام الاستشراف والتنبؤ باحداث التهريب والتسلل</h1>
               <p className="text-xs text-muted-foreground">التهريب والتسلل | تحليل بيانات وتوقع موسمي لـ 4 سنوات</p>
             </div>
           </div>

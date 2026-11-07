@@ -53,93 +53,74 @@ Download the reproducible four-year synthetic sample from [`public/sample-incide
 
 ## Clean Arabic Excel or CSV Data Offline
 
-On an internet-connected Windows PC, run this in **Command Prompt (CMD)** to download the cleaner onto your desktop:
+Follow these four steps to turn your local Excel file into the CSV accepted by the app. **Use Command Prompt (CMD), not a PowerShell prompt**, for all commands below. If your prompt begins with `PS`, type `cmd.exe` first. Paste only the commands, not the `bat` code-block label.
+
+The cleaner runs with Windows PowerShell 5.1, included with standard Windows 10/11. Cleaning and coordinate conversion are **fully offline**: no Python, Microsoft Excel installation, additional packages, account, or upload is required. Only the initial downloads need internet access.
+
+### 1. Download the Cleaner
+
+On an internet-connected Windows PC, paste these commands into CMD:
 
 ```bat
-curl.exe --fail --location --output "%USERPROFILE%\Desktop\clean_incidents.ps1" https://raw.githubusercontent.com/aimanaltoubi/smuggling/main/scripts/clean_incidents.ps1
+if not exist "%USERPROFILE%\Desktop\IncidentData" mkdir "%USERPROFILE%\Desktop\IncidentData"
+cd /d "%USERPROFILE%\Desktop\IncidentData"
+curl.exe --fail --location --output "clean_incidents.ps1" https://raw.githubusercontent.com/aimanaltoubi/smuggling/main/scripts/clean_incidents.ps1
 ```
 
-This replaces an existing desktop copy with the same name. Internet access is needed only for downloading. For the commands below, place the downloaded cleaner in the `scripts` folder on the test PC as described under **Prepare the Offline Windows PC**.
+This downloads [scripts/clean_incidents.ps1](scripts/clean_incidents.ps1) into `IncidentData` on your desktop, replacing a previous copy of the script if present. It is a separate preparation tool, not part of the installed app.
 
-If you instead keep the cleaner on your desktop and the mock workbook in Downloads, run this in **PowerShell** (the prompt beginning with `PS`):
+### 2. Place the Excel File Beside It
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\clean_incidents.ps1" -InputPath "$env:USERPROFILE\Downloads\mock-incidents.xlsx" -OutputPath "$env:USERPROFILE\Desktop\mock-incidents-clean.csv" -Sheet "Incidents" -CoordinateSystem "web-mercator"
-```
-
-**The mock requires `-CoordinateSystem "web-mercator"`.** Without it, the cleaner expects degrees and rejects the mock's metre coordinates. The absolute output path writes to your desktop regardless of the current folder, rather than attempting to write in `C:\Windows\System32`. Expect `Saved 120 records`; use a new output filename if that CSV already exists. This conversion is appropriate for the supplied mock, not for real data whose source CRS has not been confirmed.
-
-Use [scripts/clean_incidents.ps1](scripts/clean_incidents.ps1) before importing operational data. It runs with **Windows PowerShell 5.1, included with standard Windows 10/11**, and requires **no Python, Microsoft Excel, additional packages, or internet connection** on the offline PC. It reads `.xlsx` directly using Windows' built-in ZIP/XML libraries, so Arabic text does not pass through Excel's legacy CSV encoding. It also cleans existing CSV files. All processing stays on your PC.
-
-The cleaner creates a **new comma-separated UTF-8 CSV with a BOM**, which the app accepts and Excel can recognize as Unicode. It never overwrites an existing file or changes the source. It validates every non-empty record before writing; if any record fails, it prints row/column errors, exits with a nonzero status, and writes no output. Fix the source and rerun, using a new output filename if a previous output already exists. No records are silently dropped or deduplicated. Extra columns are preserved.
-
-### Prepare the Offline Windows PC
-
-Copy [scripts/clean_incidents.ps1](scripts/clean_incidents.ps1) to the offline PC using your approved transfer process, retaining the `scripts` folder for the commands below. This is a separate preparation tool, not part of the installed app. Open CMD or PowerShell in the folder containing `scripts` and your dataset. No installation is needed.
-
-For example, your folder can contain:
-
-```text
-IncidentData\
-	incidents.xlsx
-	columns.json             (only if mapping Arabic headers)
-	scripts\
-		clean_incidents.ps1
-```
-
-The commands below launch Windows PowerShell with a process-only execution-policy setting; they do not permanently change your PC's policy. Only run scripts you have reviewed and trust. If your organization blocks scripts through Group Policy or application control, ask your administrator for an approved execution method; these commands do not override those controls. Never upload operational datasets to an online converter.
-
-### Download Excel Mock from Windows CMD
-
-On an internet-connected Windows PC, open **Command Prompt (CMD)** and paste these commands to download the 120-record Excel mock and its cleaner into `OmanIncidentTest` on your desktop. No Git or Python installation is needed. These downloads replace any existing mock workbook or cleaner at the same paths; they do not change your operational datasets.
-
-```bat
-if not exist "%USERPROFILE%\Desktop\OmanIncidentTest\public" mkdir "%USERPROFILE%\Desktop\OmanIncidentTest\public"
-if not exist "%USERPROFILE%\Desktop\OmanIncidentTest\scripts" mkdir "%USERPROFILE%\Desktop\OmanIncidentTest\scripts"
-cd /d "%USERPROFILE%\Desktop\OmanIncidentTest"
-curl.exe --fail --location --output ".\public\mock-incidents.xlsx" https://raw.githubusercontent.com/aimanaltoubi/smuggling/main/public/mock-incidents.xlsx
-curl.exe --fail --location --output ".\scripts\clean_incidents.ps1" https://raw.githubusercontent.com/aimanaltoubi/smuggling/main/scripts/clean_incidents.ps1
-```
-
-Paste only the commands, not the `bat` code-block label. Internet access is required for downloading, not for cleaning or app import. The workbook uses exactly these columns:
+Copy your local workbook into that same folder and name the **copy** `incidents.xlsx`. Keep your original workbook unchanged. The first sheet must have these headers:
 
 ```text
 incident_id incident_date location_name governorate latitude longitude incident_type detained_count ethnicity details
 ```
 
-It contains 120 synthetic records across 2026 based on the supplied data format, including `ولاية محضة`, `محافظة البريمي - Al Buraymi Governorate`, native Excel timestamps, the text timestamp `2026-05-11 13:54:46`, Arabic values, both incident types (including `التسلل`), and the projected coordinate values `2792851.872` and `6240057.303`. It is not operational data and does not establish forecast accuracy.
-
-The first sheet, `Incidents`, keeps the original source layout: `latitude` holds northing (N/Y) in metres and `longitude` holds easting (E/X) in metres. Header comments identify the axes. The `WGS84 Preview` sheet shows the same records with latitude/longitude already converted to degrees, without Excel formulas. Use `-Sheet "WGS84 Preview"` without `-CoordinateSystem "web-mercator"` to clean that preview; do not convert the degree values a second time.
-
-For testing on a separate offline PC, transfer the entire `OmanIncidentTest` folder using your approved transfer process. Open CMD in that folder (or continue in the same CMD window on the download PC), then run:
+For a synthetic test instead of operational data, run this in CMD to download the 120-record mock as `incidents.xlsx`. It will not overwrite an existing workbook:
 
 ```bat
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath ".\public\mock-incidents.xlsx" -OutputPath "mock-incidents-clean.csv" -Sheet "Incidents" -CoordinateSystem "web-mercator"
+if not exist "%USERPROFILE%\Desktop\IncidentData\incidents.xlsx" curl.exe --fail --location --output "%USERPROFILE%\Desktop\IncidentData\incidents.xlsx" https://raw.githubusercontent.com/aimanaltoubi/smuggling/main/public/mock-incidents.xlsx
 ```
 
-Expect `Saved 120 records`, date-only values, normalized `تهريب`/`تسلل`, and coordinates near `24.323, 56.055`. Upload the resulting CSV, not the Excel workbook, to the app. Compare with [public/mock-incidents-clean.csv](public/mock-incidents-clean.csv), the expected cleaned output. The mock is explicitly defined as EPSG:3857; this does not establish the CRS of your real dataset. Use a new output filename when rerunning. Developers with `openpyxl` can regenerate the workbook using [scripts/generate-cleaning-mock.py](scripts/generate-cleaning-mock.py) when the destination does not already exist.
+The mock's first sheet matches your source format, including Arabic text, `التسلل`, timestamps, and N/E coordinates in metres. It is not operational data. Its second sheet, `WGS84 Preview`, is an already-converted reference; use the **first sheet** for this workflow.
 
-### Run from CMD or PowerShell
+For a separate offline PC, transfer the whole `IncidentData` folder to that user's desktop using your approved transfer process. No download is required on the offline PC. Before cleaning, the folder contains:
 
-For a workbook whose first row already contains the English headers listed above **and whose coordinates are already WGS84 decimal degrees** (not the projected Excel mock):
+```text
+IncidentData\
+    clean_incidents.ps1
+    incidents.xlsx
+```
+
+### 3. Run the Cleaner
+
+On the PC containing the workbook, paste this **complete command** into CMD:
 
 ```bat
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath "incidents.xlsx" -OutputPath "incidents-clean.csv"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\Desktop\IncidentData\clean_incidents.ps1" -InputPath "%USERPROFILE%\Desktop\IncidentData\incidents.xlsx" -OutputPath "%USERPROFILE%\Desktop\IncidentData\incidents-clean.csv" -CoordinateSystem "web-mercator"
 ```
 
-The first worksheet in workbook order is used by default. Select another worksheet explicitly when needed:
+This command is for the supplied source format: **`latitude` holds N/Y northing in metres, and `longitude` holds E/X easting in metres, using Web Mercator (EPSG:3857)**. It converts those values to WGS84 latitude/longitude degrees, removes the time from dates, and normalizes `التسلل`/`التهريب` to `تسلل`/`تهريب`. Do not remove the `-CoordinateSystem "web-mercator"` part when processing this source or the mock. For real data, verify that its projection is EPSG:3857; N/E labels alone do not identify a projection.
 
-```bat
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath "incidents.xlsx" -OutputPath "incidents-clean.csv" -Sheet "Sheet1"
-```
+The output path is explicit, so the CSV is created in `IncidentData`, not `C:\Windows\System32`, regardless of where CMD was opened. Only run scripts you have reviewed and trust. The execution-policy setting applies to this process only; organizational script restrictions still apply.
 
-For an existing UTF-8 CSV, including dates such as `23-06-2025 13:87:02`:
+### 4. Import the Clean CSV
 
-```bat
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath "incidents.csv" -OutputPath "incidents-clean.csv"
-```
+For the mock, expect **`Saved 120 records`**. Open the app's upload tab and select `incidents-clean.csv` from `IncidentData` on your desktop, **not the Excel file**. Compare with [public/mock-incidents-clean.csv](public/mock-incidents-clean.csv) if needed. The example coordinates become latitude `24.32328749` and longitude `56.05538849`.
 
-The date becomes `2025-06-23`. The time is deliberately ignored, even if invalid. Accepted Gregorian date forms are `DD-MM-YYYY`, `DD/MM/YYYY`, `YYYY-MM-DD`, `YYYY/MM/DD`, and native Excel date cells, optionally with times. **Day-first is always used when the year is last**: `03/04/2025` means 3 April, not March 4. US month-first dates and Hijri calendar dates must be converted explicitly before running this tool; they cannot be reliably inferred. Unformatted Excel serial numbers are rejected: format those cells as actual Excel dates first.
+The cleaner creates a new comma-separated UTF-8 CSV with a BOM. It never changes the source workbook, overwrites an existing output, silently drops invalid records, or deduplicates them. If `incidents-clean.csv` already exists, change only the output filename in step 3 to a new name, such as `incidents-clean-2.csv`. If validation fails, no CSV is written; correct the reported source issues and rerun. Extra columns are preserved.
+
+### Other Input Formats
+
+Keep the step 3 command and change only the relevant option:
+
+- Already-converted WGS84 degree coordinates: replace `-CoordinateSystem "web-mercator"` with `-CoordinateSystem "wgs84"`. Never reconvert degree values as metres.
+- Another Excel worksheet: add `-Sheet "Sheet1"`, using the actual sheet name. The first worksheet is used by default.
+- Local CSV instead of Excel: change the input filename from `incidents.xlsx` to `incidents.csv`. The same coordinate-system rule applies.
+- Arabic column headers: add `-ColumnMap "%USERPROFILE%\Desktop\IncidentData\columns.json"` after preparing the mapping below.
+
+For example, `23-06-2025 13:87:02` becomes `2025-06-23`. The time is deliberately ignored, even if invalid. Accepted Gregorian date forms are `DD-MM-YYYY`, `DD/MM/YYYY`, `YYYY-MM-DD`, `YYYY/MM/DD`, and native Excel date cells, optionally with times. **Day-first is always used when the year is last**: `03/04/2025` means 3 April, not March 4. US month-first dates and Hijri calendar dates must be converted explicitly before running this tool; they cannot be reliably inferred. Unformatted Excel serial numbers are rejected: format those cells as actual Excel dates first.
 
 ### Map Arabic Column Headers
 
@@ -160,9 +141,7 @@ Arabic **cell contents stay Arabic**. Only headers must match the app's English 
 }
 ```
 
-```bat
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath "incidents.xlsx" -OutputPath "incidents-clean.csv" -ColumnMap "columns.json"
-```
+Place the mapping in `IncidentData` beside the workbook, then add the column-map option listed under **Other Input Formats** to the complete step 3 command.
 
 Reuse the same mapping for future files with that schema. The tool does not guess header meanings, invent missing coordinates, translate categories, or change governorate names. `incident_type` accepts `تهريب` or `تسلل` and normalizes the definite-article variants `التهريب` and `التسلل` to those app values; other labels require a verified source correction. The first row must be the header, without preceding titles or merged header cells. Convert legacy `.xls` workbooks to `.xlsx` first. Replace Excel formulas/errors with verified values before conversion. Store identifiers as text in Excel to preserve leading zeros; digits already lost by Excel cannot be recovered by this tool.
 
@@ -170,11 +149,7 @@ Reuse the same mapping for future files with that schema. The tool does not gues
 
 By default, `latitude` and `longitude` must be WGS84 decimal degrees, not metres. Values such as `2792851.872` and `6240057.303` are outside that range and resemble projected coordinates. Confirm the coordinate reference system (CRS) with the dataset provider or GIS export settings before converting; the numbers alone do not identify it reliably.
 
-For a source **confirmed to use Web Mercator (EPSG:3857)**, with northing (Y) in `latitude` and easting (X) in `longitude`, run:
-
-```bat
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath "incidents.xlsx" -OutputPath "incidents-clean.csv" -CoordinateSystem "web-mercator"
-```
+The complete step 3 command selects Web Mercator (EPSG:3857), with northing (Y) in `latitude` and easting (X) in `longitude`.
 
 This converts all coordinates in the file from metres to WGS84 degrees. The example above becomes approximately `24.323` latitude and `56.055` longitude. This interpretation is conditional on the confirmed source CRS, not proof of the incident's location. Do not use this option for UTM, another projection, or mixed coordinate systems; export those sources as WGS84 decimal degrees with a trusted offline GIS tool first. If the X/Y columns are reversed, correct the headers or column mapping first. The Python cleaner supports the same conversion with `--coordinate-system web-mercator`.
 
@@ -203,9 +178,13 @@ Developer note: [scripts/test_clean_incidents.py](scripts/test_clean_incidents.p
 
 ## Windows Offline Installer
 
+The incident map uses **Leaflet 2D offline vector tiles**, not Cesium or WebGL. Bundled geometry includes **165,336 road segments**, local streets, urban land-use areas, waterways, vegetation, and country outlines. Detail is rendered locally at each zoom level, rather than stretching one overview image. A separate OpenStreetMap dataset contains **2,723 named places in Oman**, including 27 cities, 46 towns, 1,932 villages, hamlets, suburbs, and neighbourhoods. Arabic names are used where available, with the source name as fallback. Major places appear at wider views; smaller places and named streets appear at closer zooms, with overlapping labels suppressed. Local Arabic/English place search, scale, incident popups, and risk-grid views are included. The map is constrained to the Oman region. No online tile server, account, API key, or internet connection is required. It is not satellite imagery or a complete street-level survey; OpenStreetMap coverage may omit places or contain errors.
+
+The **border view uses geographic lines**, not rectangular sectors or latitude cutoffs. Oman–UAE, Oman–Saudi Arabia, and Oman–Yemen borders are derived from shared national boundary ways in OpenStreetMap; the physical coastline is downloaded separately. Each incident is counted against its nearest line only when it lies **within 25 km**. Interior incidents outside that limit remain unassigned. This is a stated proximity rule, not proof that an incident crossed a border. These are reference boundaries, not an authoritative operational survey; obtain approved boundary data for decisions requiring that level of certainty.
+
 The Windows x64 setup EXE contains the app, Electron runtime, local map assets, llama.cpp CPU runtime, and Qwen model. It is a single file for transfer to the offline PC. Its download/install size is about 1.2 GB; allow at least 3 GB of free disk space while installing. The bundled basemap includes Natural Earth 1:10m country outlines and OpenStreetMap coastlines, governorate boundaries, principal roads, and major-place labels. It has no online tiles, does not include every local street, and is not an authoritative operational boundary reference. Natural Earth country data is public domain. OpenStreetMap data is credited to [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) and available under the Open Database License (ODbL).
 
-To refresh the bundled map from an internet-connected development machine, run `npm run map:build` and commit the updated `public/offline-oman-map.svg`.
+To refresh the bundled map data on an internet-connected development machine, run `npm run map:build` and commit [public/offline-oman-geography.json](public/offline-oman-geography.json), [src/lib/analytics/omanBoundaries.json](src/lib/analytics/omanBoundaries.json), [src/lib/analytics/omanPlaces.json](src/lib/analytics/omanPlaces.json), and the optional overview [public/offline-oman-map.svg](public/offline-oman-map.svg). Focused refresh options are `--geography-only`, `--boundaries-only`, and `--places-only`, passed to `node scripts/generate-offline-map.js`. Run `node --test scripts/test_border_analytics.mjs` to check the border proximity logic. These are preparation steps; the installed app reads the bundled data without network access.
 
 ### Optional offline forecast explanations
 
