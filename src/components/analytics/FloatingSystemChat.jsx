@@ -51,6 +51,7 @@ export default function FloatingSystemChat({ incidents, prediction, activeTab })
     const detachedTarget = /معتقل|detain/i.test(prompt);
     const type = prompt.includes("تهريب") && !prompt.includes("تسلل") ? "تهريب" : prompt.includes("تسلل") && !prompt.includes("تهريب") ? "تسلل" : null;
     const available = Object.values(forecasts).filter(facts => /معتقل|detain/i.test(facts.target || "") === detachedTarget && (!type || facts.incidentType?.includes(type)));
+    const asksAnnual = /(?:ال|لل)سنة القادم(?:ة)?|(?:ال|لل)سنة المقبل(?:ة)?|(?:ال|لل)عام القادم|(?:ال|لل)عام المقبل|الاثني عشر شهرا|الاثني عشر شهراً|12 شهرا|12 شهراً|next year|year ahead|next 12 months/i.test(prompt);
     const tactical = prediction ? {
       forecast: "tactical", target: "عدد الحوادث", observedEvidence: evidence,
       window: { start: prediction.forecastWindow.startLabel, end: prediction.forecastWindow.endLabel },
@@ -58,7 +59,10 @@ export default function FloatingSystemChat({ incidents, prediction, activeTab })
       dailyIncidentForecast: prediction.when.dailyBreakdown.map(day => ({ date: day.label, expectedIncidents: day.expected })),
       recentDailyRate: prediction.model.recentDailyRate,
     } : null;
-    const forecastFacts = activeTab === "prediction" || /تكتيكي|قادم|tactical|prediction/i.test(prompt) ? tactical : available[0] || tactical;
+    const monthlyForecast = available.find(facts => facts.forecast === "monthly strategic");
+    const forecastFacts = asksAnnual && monthlyForecast
+      ? monthlyForecast
+      : activeTab === "prediction" || /تكتيكي|قادم|tactical|prediction/i.test(prompt) ? tactical : available[0] || tactical;
     const selectedRecords = type ? (incidents || []).filter(incident => incident.incident_type === type) : incidents || [];
     const selectedEvidence = type ? buildReportEvidence(selectedRecords, type) : evidence;
     const answer = answerSystemQuestion(prompt, { evidence: selectedEvidence, forecastFacts, records: selectedRecords });

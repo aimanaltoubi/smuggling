@@ -25,7 +25,7 @@ test("does not invent answers without loaded data or available knowledge", () =>
   assert.equal(answerSystemQuestion("ما عاصمة دولة لم تذكرها البيانات؟").topic, "clarification");
 });
 test("explains patterns and forecast levels from computed values", () => {
-  assert(answerSystemQuestion("حلل الأنماط التاريخية", context).text.includes("1 فترات صفرية"));
+  assert(answerSystemQuestion("حلل الأنماط التاريخية", context).text.includes("1 أشهر صفرية"));
   assert(answerSystemQuestion("لماذا خط التوقع ثابت؟", context).text.includes("الخط ثابت"));
   assert(answerSystemQuestion("لماذا خط التوقع ثابت؟", context).text.includes("2027-01"));
 });
@@ -56,4 +56,62 @@ test("date-specific questions count matching records and refuse dates outside ob
   assert.equal(answerSystemQuestion("كم عدد الحوادث في 2030-01؟", { ...context, records }).topic, "clarification");
   assert(answerSystemQuestion("كم عدد الحوادث في البريمي بتاريخ 2026-02-11؟", { ...context, records }).text.includes("1 واقعة"));
   assert.equal(answerSystemQuestion("كم عدد الحوادث في مسقط بتاريخ 2026-02-11؟", { ...context, records }).topic, "clarification");
+});
+
+test("analysis-intent questions analyze selected-type patterns instead of repeating totals", () => {
+  const records = Array.from({ length: 60 }, (_, index) => {
+    const activeMonth = Math.floor(index / 10) * 2;
+    const month = String(activeMonth + 2).padStart(2, "0");
+    return { incident_date: `2026-${month}-11`, incident_type: "تهريب", governorate: "محافظة البريمي", detained_count: index < 30 ? 2 : 4 };
+  });
+  const scopedEvidence = buildReportEvidence(records, "تهريب");
+  const facts = {
+    forecast: "monthly strategic", target: "عدد الحوادث", incidentType: "تهريب", observedEvidence: scopedEvidence,
+    projectedMonthlyValues: Array.from({ length: 48 }, (_, index) => ({ period: `${2027 + Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}`, value: 6.67 })),
+    selectedCandidates: [{ id: "recent-3" }], validatedHorizonMonths: 6, validationRmse: 4.714,
+  };
+  for (const question of ["ما هي الدلالات لنتائج تهريب؟", "حلل التهريب", "Analyze the smuggling results"]) {
+    const answer = answerSystemQuestion(question, { evidence: scopedEvidence, forecastFacts: facts, records });
+    assert.equal(answer.topic, "analytical-reading");
+    assert(answer.text.includes("60 واقعة و180 معتقلاً"));
+    assert(answer.text.includes("5.45 شهرياً"));
+    assert(answer.text.includes("5 أشهر صفرية"));
+    assert(answer.text.includes("6.67"));
+    assert(answer.text.includes("متوسط آخر 3 أشهر"));
+    assert(!answer.text.startsWith("**السجلات المحملة:**"));
+  }
+});
+
+test("capability question gives actionable examples instead of a restriction disclaimer", () => {
+  const answer = answerSystemQuestion("ماذا تستطيع مساعدتي به؟");
+  assert.equal(answer.topic, "capabilities");
+  assert(answer.text.includes("حلل نتائج التهريب"));
+  assert(answer.text.includes("لماذا خط التوقع ثابت"));
+  assert(answer.text.includes("كم عدد المعتقلين"));
+  assert(!answer.text.startsWith("التقرير يقرأ المؤشرات"));
+});
+
+test("annual questions are not answered from tactical horizons", () => {
+  const tactical = { forecast: "tactical event prediction", target: "عدد الحوادث", window: { days: 14, start: "2026-12-21", end: "2027-01-03" }, expectedIncidentTotal: 4.516, dailyIncidentForecast: [{ date: "2026-12-21", expectedIncidents: 0.3225806451612903 }] };
+  const answer = answerSystemQuestion("ما هي التوقعات للسنة القادمة؟", { evidence, forecastFacts: tactical });
+  assert.equal(answer.topic, "forecast-horizon");
+  assert(answer.text.includes("ليست توقعاً سنوياً"));
+  assert(!answer.text.includes("0.3225806451612903"));
+});
+
+test("annual questions use monthly annual totals when a strategic forecast is available", () => {
+  const strategic = { ...context.forecastFacts, forecast: "monthly strategic", target: "عدد الحوادث", projectedMonthlyValues: Array.from({ length: 48 }, (_, index) => ({ period: `${2027 + Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}`, value: 6.67 })) };
+  const answer = answerSystemQuestion("ما هي التوقعات للسنة القادمة؟", { evidence, forecastFacts: strategic });
+  assert(answer.text.includes("السنة الأولى من التوقع (2027)"));
+  assert(answer.text.includes("80.04"));
+  assert(!answer.text.includes("0.3225806451612903"));
+});
+
+test("tactical forecast answers show a rounded window total and daily rate, not false precision", () => {
+  const tactical = { forecast: "tactical event prediction", target: "عدد الحوادث", window: { days: 14, start: "2026-12-21", end: "2027-01-03" }, expectedIncidentTotal: 4.516, dailyIncidentForecast: Array.from({ length: 14 }, (_, index) => ({ date: `2026-12-${String(index + 1).padStart(2, "0")}`, expectedIncidents: 0.3225806451612903 })) };
+  const answer = answerSystemQuestion("ما هي التوقعات للفترة؟", { evidence, forecastFacts: tactical });
+  assert(answer.text.includes("14 يوماً"));
+  assert(answer.text.includes("إجمالي الحوادث المتوقع **4.52**"));
+  assert(answer.text.includes("متوسط يومي **0.32**"));
+  assert(!answer.text.includes("0.3225806451612903"));
 });
