@@ -1,7 +1,7 @@
 import TacticalForecast from '@/lib/pipeline/TacticalForecast';
 import { DAY, monthDays } from '@/lib/pipeline/TacticalCalibration';
 import { toMonthId } from '@/lib/pipeline/ViewsDataLoader';
-import { mean, metrics } from '@/lib/evaluation/metrics';
+import { buildDailyTrainingHistory, horizonNaiveScale, mean, metrics, seasonalNaiveScale } from '@/lib/evaluation/metrics';
 import { pause } from '@/lib/evaluation/monthlyBacktest';
 
 const dayKey = value => new Date(value).toISOString().slice(0, 10);
@@ -42,10 +42,16 @@ export default async function tacticalBacktest(records, origins, onProgress) {
       const recentDetained = recent.reduce((sum, record) => sum + (record.detained_count || 0), 0);
       const predictedIncidents = prediction.when.totalExpectedIncidents;
       const predictedDetained = prediction.howMany.expectedTotalDetained;
+      const dailyIncidentHistory = buildDailyTrainingHistory(train, cutoff, 'incidents');
+      const dailyDetainedHistory = buildDailyTrainingHistory(train, cutoff, 'detained_count');
+      const incidentDailyScale = seasonalNaiveScale(dailyIncidentHistory, 7) ?? seasonalNaiveScale(dailyIncidentHistory);
+      const detainedDailyScale = seasonalNaiveScale(dailyDetainedHistory, 7) ?? seasonalNaiveScale(dailyDetainedHistory);
+      const incidentWindowScale = horizonNaiveScale(dailyIncidentHistory, horizon);
+      const detainedWindowScale = horizonNaiveScale(dailyDetainedHistory, horizon);
 
       totals.push(
-        { origin, horizon, target: 'incidents', actual: actual.length, predicted: predictedIncidents, baseline: recent.length / 30 * horizon, scale: 0 },
-        { origin, horizon, target: 'detained_count', actual: actualDetained, predicted: predictedDetained, baseline: recentDetained / 30 * horizon, scale: 0 },
+        { origin, horizon, target: 'incidents', actual: actual.length, predicted: predictedIncidents, baseline: recent.length / 30 * horizon, scale: incidentWindowScale },
+        { origin, horizon, target: 'detained_count', actual: actualDetained, predicted: predictedDetained, baseline: recentDetained / 30 * horizon, scale: detainedWindowScale },
       );
 
       const actualByDay = new Map();
@@ -80,7 +86,7 @@ export default async function tacticalBacktest(records, origins, onProgress) {
           actual: actualByDay.get(dayKey(day.date)) || 0,
           predicted: day.expected,
           baseline: recent.length / 30,
-          scale: 0,
+          scale: incidentDailyScale,
         })),
         dailyDetainedMaeRows: prediction.when.dailyBreakdown.map(day => {
           const date = dayKey(day.date);
@@ -90,7 +96,7 @@ export default async function tacticalBacktest(records, origins, onProgress) {
             actual: actualCount,
             predicted: day.detained,
             baseline: recentDetained / 30,
-            scale: 0,
+            scale: detainedDailyScale,
           };
         }),
         typeHit: actualTypes.length ? actualTypes.includes(prediction.howMany.predictedType) : null,

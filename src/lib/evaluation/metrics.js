@@ -1,4 +1,43 @@
 export const mean = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dayKey = value => new Date(value).toISOString().slice(0, 10);
+
+export function buildDailyTrainingHistory(records, cutoff, target) {
+  const end = new Date(cutoff);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = records.reduce((earliest, record) => {
+    const time = Date.parse(record.incident_date);
+    return Number.isFinite(time) ? Math.min(earliest, time) : earliest;
+  }, Infinity);
+  if (!Number.isFinite(start) || start > end.getTime()) return [];
+  const daily = new Map();
+  for (const record of records) {
+    const time = Date.parse(record.incident_date);
+    if (!Number.isFinite(time) || time > end.getTime()) continue;
+    const key = dayKey(time);
+    daily.set(key, (daily.get(key) || 0) + (target === 'incidents' ? 1 : Number(record.detained_count) || 0));
+  }
+  const values = [];
+  for (let time = new Date(start).setUTCHours(0, 0, 0, 0); time <= end.getTime(); time += DAY_MS) values.push(daily.get(dayKey(time)) || 0);
+  return values;
+}
+
+export function seasonalNaiveScale(values, lag = 1) {
+  if (!Array.isArray(values) || !Number.isInteger(lag) || lag < 1 || values.length <= lag) return null;
+  const differences = values.slice(lag).map((value, index) => Math.abs(value - values[index]));
+  const scale = mean(differences.filter(Number.isFinite));
+  return scale > 0 ? scale : null;
+}
+
+export function horizonNaiveScale(values, horizon) {
+  if (!Array.isArray(values) || !Number.isInteger(horizon) || horizon < 1) return null;
+  const windows = [];
+  for (let start = 0; start + horizon <= values.length; start += horizon) {
+    windows.push(values.slice(start, start + horizon).reduce((total, value) => total + value, 0));
+  }
+  return seasonalNaiveScale(windows);
+}
+
 export function metrics(rows) {
   if (!rows.length) return { n: 0 };
   const errors = rows.map(r => r.predicted - r.actual), abs = errors.map(Math.abs);
