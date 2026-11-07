@@ -59,14 +59,21 @@ function startLocalServer() {
         });
         request.on('end', async () => {
           if (bodySize > 32768) return;
+          const controller = new AbortController();
+          const onClose = () => { if (!response.writableEnded) controller.abort(); };
+          response.once('close', onClose);
           try {
             const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-            const text = await localLlm.explain(body.facts);
+            const generated = await localLlm.explain(body.facts, body.format, controller.signal);
             response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-            response.end(JSON.stringify({ text }));
+            response.end(JSON.stringify(generated));
           } catch (error) {
-            response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-            response.end(JSON.stringify({ error: error.message || 'Local explanation unavailable.' }));
+            if (!controller.signal.aborted) {
+              response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+              response.end(JSON.stringify({ error: error.message || 'Local explanation unavailable.' }));
+            }
+          } finally {
+            response.removeListener('close', onClose);
           }
         });
         return;

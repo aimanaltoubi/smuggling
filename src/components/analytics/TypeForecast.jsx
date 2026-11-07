@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { CalendarOff } from "lucide-react";
 import { pipelineStrategicForecast } from "@/lib/pipeline/PipelineBridge";
 import LocalForecastExplanation from "./LocalForecastExplanation";
+import { buildReportEvidence } from "@/lib/analytics/reportEvidence";
 
 const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 function fmtDate(d) {
@@ -14,15 +15,15 @@ function fmtDate(d) {
 // Forecasts come from the MLOps pipeline (ViEWS baselines) — the same engine
 // that powers every prediction in the app.
 export default function TypeForecast({ incidents, metric, title, accent = "#0f172a" }) {
-  const { chartData, projection, params, residStd, lastDate } = useMemo(() => {
-    if (incidents.length < 3) return { chartData: [], projection: [], params: {}, residStd: 0, lastDate: null };
+  const { chartData, projection, params, validationRmse, lastDate } = useMemo(() => {
+    if (incidents.length < 3) return { chartData: [], projection: [], params: {}, validationRmse: null, lastDate: null };
     const fc = pipelineStrategicForecast(incidents, { target: metric, level: "governorate", horizon: 48 });
     const hist = fc.historical.map((m) => ({ period: m.period, actual: m[metric] }));
-    if (!hist.length) return { chartData: [], projection: [], params: fc.params, residStd: fc.residStd, lastDate: null };
+    if (!hist.length) return { chartData: [], projection: [], params: fc.params, validationRmse: fc.metrics?.overall_rmse ?? null, lastDate: null };
     const last = hist[hist.length - 1];
     const proj = fc.projection.map((p) => ({ period: p.period, forecast: p.value, lower95: p.lower95, upper95: p.upper95 }));
     const chartData = [...hist, { period: last.period, forecast: last.actual, lower95: last.actual, upper95: last.actual }, ...proj];
-    return { chartData, projection: fc.projection, params: fc.params, residStd: fc.residStd, lastDate: fc.historical[fc.historical.length - 1].date };
+    return { chartData, projection: fc.projection, params: fc.params, validationRmse: fc.metrics?.overall_rmse ?? null, lastDate: fc.historical[fc.historical.length - 1].date };
   }, [incidents, metric]);
 
   const metricLabel = metric === "incidents" ? "عدد الحوادث" : "عدد المعتقلين";
@@ -38,16 +39,18 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
   }, [projection]);
 
   const explanationFacts = {
+    observedEvidence: buildReportEvidence(incidents, title),
     forecast: "monthly strategic",
     target: metricLabel,
     incidentType: title,
     historyStart: chartData.find(row => row.actual != null)?.period,
     historyEnd: lastDate?.toISOString().slice(0, 7),
     recentMonthlyActuals: chartData.filter(row => row.actual != null).slice(-12).map(({ period, actual }) => ({ period, actual })),
-    projectedMonthlyValues: projection.map(({ period, value, lower95, upper95 }) => ({ period, value, lower95, upper95 })),
+    projectedMonthlyValues: projection.map(({ period, value, lower95, upper95 }) => ({ period, value, experimentalLower80: lower95, experimentalUpper80: upper95 })),
+    intervalInterpretation: "Experimental 80% residual-based ranges within the validated horizon only; not guaranteed or calibrated probabilities.",
     selectedCandidates: params?.selection?.members?.map(({ id, predictors }) => ({ id, predictors })),
     validatedHorizonMonths: params?.validatedHorizon,
-    validationRmse: residStd,
+    validationRmse,
   };
 
   if (!chartData.length) {
@@ -104,7 +107,7 @@ export default function TypeForecast({ incidents, metric, title, accent = "#0f17
           ))}
         </div>
         <div className="mt-3 text-xs text-muted-foreground">
-          النموذج: {params?.model} ({params?.family}) | مستوى: {params?.level} | RMSE التحقق: {residStd}
+          النموذج: {params?.model} ({params?.family}) | مستوى: {params?.level} | RMSE التحقق: {validationRmse ?? "غير متاح"}
         </div>
       </div>
     </div>

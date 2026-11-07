@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 import IncidentMap from "./IncidentMap";
 import LocalForecastExplanation from "./LocalForecastExplanation";
+import { buildReportEvidence } from "@/lib/analytics/reportEvidence";
 
 export default function PredictionSection({ incidents }) {
   const prediction = useMemo(() => {
@@ -136,6 +137,7 @@ export default function PredictionSection({ incidents }) {
       </div>
 
       <LocalForecastExplanation facts={{
+        observedEvidence: buildReportEvidence(incidents, "all supplied incident types"),
         forecast: "tactical event prediction",
         observationEnd: prediction.dataEndpoint.lastDateLabel,
         window: { start: prediction.forecastWindow.startLabel, end: prediction.forecastWindow.endLabel, days: prediction.forecastWindow.days },

@@ -2,6 +2,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
+const { createExplanationRequest, evaluateExplanation, buildGroundedExplanation } = require('./explanationRequest.cjs');
 
 const MODEL_FILENAME = 'qwen2.5-1.5b-instruct-q4_k_m.gguf';
 let processHandle = null;
@@ -81,7 +82,7 @@ async function start(app) {
       '--model', files.modelPath,
       '--host', '127.0.0.1',
       '--port', String(apiPort),
-      '--ctx-size', '4096',
+      '--ctx-size', '8192',
       '--parallel', '1',
       '--n-gpu-layers', '0',
     ], {
@@ -109,36 +110,37 @@ function getStatus() {
   return { ...state, model: MODEL_FILENAME };
 }
 
-async function explain(facts) {
+async function explain(facts, format = 'summary', signal) {
   if (state.status !== 'ready' || !apiPort) {
     throw new Error(state.message || 'The offline model is not ready.');
   }
-  const userContent = JSON.stringify(facts);
-  if (userContent.length > 24000) throw new Error('Forecast details are too large to summarize.');
+  const request = createExplanationRequest(facts, format);
+  const fallback = issues => {
+    const text = buildGroundedExplanation(facts, format);
+    const evaluation = evaluateExplanation(text, facts, format);
+    if (!evaluation.passed) throw new Error('No explanation accepted: supplied facts could not produce a valid grounded analysis.');
+    return { text, method: 'grounded-template', qualityIssues: issues };
+  };
 
-  const response = await fetch(`http://127.0.0.1:${apiPort}/v1/chat/completions`, {
+  try {
+    const response = await fetch(`http://127.0.0.1:${apiPort}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'local-qwen',
-      messages: [
-        {
-          role: 'system',
-          content: 'أنت مساعد لشرح مخرجات نموذج إحصائي. استخدم الحقائق الرقمية الواردة فقط. لا تغيّر الأرقام أو التواريخ أو الترتيب، ولا تضف تنبؤاً أو سبباً غير مدعوم بالمدخلات. اكتب شرحاً عربياً موجزاً من 3 إلى 5 جمل، واذكر حدود الثقة إذا كانت موجودة. وضّح أن التفسير نص مساعد وليس توقعاً جديداً.',
-        },
-        { role: 'user', content: userContent },
-      ],
-      temperature: 0.2,
-      max_tokens: 240,
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(120000),
+    body: JSON.stringify(request),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(format === 'report' ? 300000 : 120000)]) : AbortSignal.timeout(format === 'report' ? 300000 : 120000),
   });
-  if (!response.ok) throw new Error(`The local model returned HTTP ${response.status}.`);
-  const result = await response.json();
-  const text = result.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error('The local model returned no explanation.');
-  return text;
+    if (!response.ok) return fallback([`local model HTTP ${response.status}`]);
+    const result = await response.json();
+    const text = result.choices?.[0]?.message?.content?.trim();
+    if (!text) return fallback(['empty model output']);
+    if (result.choices[0].finish_reason === 'length') return fallback(['truncated model output']);
+    const evaluation = evaluateExplanation(text, facts, format);
+    if (!evaluation.passed) return fallback(evaluation.issues);
+    return { text, method: 'local-model', qualityIssues: [] };
+  } catch (error) {
+    if (signal?.aborted || error.name === 'AbortError') throw error;
+    return fallback(['local model request failed']);
+  }
 }
 
 function stop() {
