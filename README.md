@@ -12,7 +12,7 @@ if not exist "%USERPROFILE%\Desktop\OmanIncidentAnalytics" mkdir "%USERPROFILE%\
 
 Paste the command exactly as one line. Do not type `bat`; it is only the Markdown code-block label.
 
-The currently published `v1.0.1` release predates the self-contained installer. The next versioned release will publish `Oman-Incident-Analytics-Setup-x64.exe`; this command will then follow newer releases automatically. Copy that single installer EXE to a USB drive and transfer it to the offline PC. Run it there to install the complete app, including the map, model runtime, and 1.12 GB language model. The offline PC does not need CMD setup, Node.js, or internet access.
+This command downloads the latest successfully published installer. Copy that single installer EXE to a USB drive and transfer it to the offline PC. Run it there to install the complete app, including the map, model runtime, and 1.12 GB language model. The offline PC does not need CMD setup, Node.js, or internet access. A source-code push alone does not update the EXE: the versioned Windows release build must finish and publish its installer first.
 
 ## Forecast Models
 
@@ -190,14 +190,7 @@ To refresh the bundled map data on an internet-connected development machine, ru
 
 Qwen 2.5 1.5B Instruct (Q4_K_M) runs through the bundled llama.cpp CPU runtime and generates short Arabic explanations in the strategic and tactical tabs. It receives forecast results and validation facts only; it cannot change forecasts. Its text may still be wrong and is commentary, not evidence. The model is Apache-2.0 licensed. No extra files or post-install downloads are needed.
 
-The Windows release workflow builds the model-inclusive installer when a `v*` version tag is pushed. The current `v1.0.3` release does not include the latest map changes. After they are pushed, create `v1.0.4` from the repository:
-
-```bat
-git tag v1.0.4
-git push origin v1.0.4
-```
-
-Use a new version tag for each release. The workflow can also be run manually from GitHub Actions; a manual run provides the installer as a downloadable workflow artifact.
+The Windows release workflow builds and publishes the model-inclusive installer when a new `v*` version tag is pushed. Before tagging, update the app version in [package.json](package.json), synchronize [package-lock.json](package-lock.json), and commit and push those changes. Use a new, matching version tag for each release. The latest-release download command updates only after that workflow succeeds and publishes the installer. The workflow can also be run manually from GitHub Actions; a manual run provides the installer as a downloadable workflow artifact rather than updating the public release download.
 
 ### Build the EXE from CMD
 
