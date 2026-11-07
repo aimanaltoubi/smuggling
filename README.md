@@ -53,6 +53,22 @@ Download the reproducible four-year synthetic sample from [`public/sample-incide
 
 ## Clean Arabic Excel or CSV Data Offline
 
+On an internet-connected Windows PC, run this in **Command Prompt (CMD)** to download the cleaner onto your desktop:
+
+```bat
+curl.exe --fail --location --output "%USERPROFILE%\Desktop\clean_incidents.ps1" https://raw.githubusercontent.com/aimanaltoubi/smuggling/main/scripts/clean_incidents.ps1
+```
+
+This replaces an existing desktop copy with the same name. Internet access is needed only for downloading. For the commands below, place the downloaded cleaner in the `scripts` folder on the test PC as described under **Prepare the Offline Windows PC**.
+
+If you instead keep the cleaner on your desktop and the mock workbook in Downloads, run this in **PowerShell** (the prompt beginning with `PS`):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\clean_incidents.ps1" -InputPath "$env:USERPROFILE\Downloads\mock-incidents.xlsx" -OutputPath "$env:USERPROFILE\Desktop\mock-incidents-clean.csv" -Sheet "Incidents" -CoordinateSystem "web-mercator"
+```
+
+**The mock requires `-CoordinateSystem "web-mercator"`.** Without it, the cleaner expects degrees and rejects the mock's metre coordinates. The absolute output path writes to your desktop regardless of the current folder, rather than attempting to write in `C:\Windows\System32`. Expect `Saved 120 records`; use a new output filename if that CSV already exists. This conversion is appropriate for the supplied mock, not for real data whose source CRS has not been confirmed.
+
 Use [scripts/clean_incidents.ps1](scripts/clean_incidents.ps1) before importing operational data. It runs with **Windows PowerShell 5.1, included with standard Windows 10/11**, and requires **no Python, Microsoft Excel, additional packages, or internet connection** on the offline PC. It reads `.xlsx` directly using Windows' built-in ZIP/XML libraries, so Arabic text does not pass through Excel's legacy CSV encoding. It also cleans existing CSV files. All processing stays on your PC.
 
 The cleaner creates a **new comma-separated UTF-8 CSV with a BOM**, which the app accepts and Excel can recognize as Unicode. It never overwrites an existing file or changes the source. It validates every non-empty record before writing; if any record fails, it prints row/column errors, exits with a nonzero status, and writes no output. Fix the source and rerun, using a new output filename if a previous output already exists. No records are silently dropped or deduplicated. Extra columns are preserved.
@@ -73,9 +89,19 @@ IncidentData\
 
 The commands below launch Windows PowerShell with a process-only execution-policy setting; they do not permanently change your PC's policy. Only run scripts you have reviewed and trust. If your organization blocks scripts through Group Policy or application control, ask your administrator for an approved execution method; these commands do not override those controls. Never upload operational datasets to an online converter.
 
-### Download Excel Mock
+### Download Excel Mock from Windows CMD
 
-**[Download the Excel mock with 120 records](https://github.com/aimanaltoubi/smuggling/raw/refs/heads/main/public/mock-incidents.xlsx)** to test the cleaning and import workflow locally. The workbook is stored at [public/mock-incidents.xlsx](public/mock-incidents.xlsx) and uses exactly these columns:
+On an internet-connected Windows PC, open **Command Prompt (CMD)** and paste these commands to download the 120-record Excel mock and its cleaner into `OmanIncidentTest` on your desktop. No Git or Python installation is needed. These downloads replace any existing mock workbook or cleaner at the same paths; they do not change your operational datasets.
+
+```bat
+if not exist "%USERPROFILE%\Desktop\OmanIncidentTest\public" mkdir "%USERPROFILE%\Desktop\OmanIncidentTest\public"
+if not exist "%USERPROFILE%\Desktop\OmanIncidentTest\scripts" mkdir "%USERPROFILE%\Desktop\OmanIncidentTest\scripts"
+cd /d "%USERPROFILE%\Desktop\OmanIncidentTest"
+curl.exe --fail --location --output ".\public\mock-incidents.xlsx" https://raw.githubusercontent.com/aimanaltoubi/smuggling/main/public/mock-incidents.xlsx
+curl.exe --fail --location --output ".\scripts\clean_incidents.ps1" https://raw.githubusercontent.com/aimanaltoubi/smuggling/main/scripts/clean_incidents.ps1
+```
+
+Paste only the commands, not the `bat` code-block label. Internet access is required for downloading, not for cleaning or app import. The workbook uses exactly these columns:
 
 ```text
 incident_id incident_date location_name governorate latitude longitude incident_type detained_count ethnicity details
@@ -83,7 +109,9 @@ incident_id incident_date location_name governorate latitude longitude incident_
 
 It contains 120 synthetic records across 2026 based on the supplied data format, including `ولاية محضة`, `محافظة البريمي - Al Buraymi Governorate`, native Excel timestamps, the text timestamp `2026-05-11 13:54:46`, Arabic values, both incident types (including `التسلل`), and the projected coordinate values `2792851.872` and `6240057.303`. It is not operational data and does not establish forecast accuracy.
 
-For offline user testing, transfer the workbook and the updated [scripts/clean_incidents.ps1](scripts/clean_incidents.ps1) to the test PC. With the repository's folder layout, run:
+The first sheet, `Incidents`, keeps the original source layout: `latitude` holds northing (N/Y) in metres and `longitude` holds easting (E/X) in metres. Header comments identify the axes. The `WGS84 Preview` sheet shows the same records with latitude/longitude already converted to degrees, without Excel formulas. Use `-Sheet "WGS84 Preview"` without `-CoordinateSystem "web-mercator"` to clean that preview; do not convert the degree values a second time.
+
+For testing on a separate offline PC, transfer the entire `OmanIncidentTest` folder using your approved transfer process. Open CMD in that folder (or continue in the same CMD window on the download PC), then run:
 
 ```bat
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath ".\public\mock-incidents.xlsx" -OutputPath "mock-incidents-clean.csv" -Sheet "Incidents" -CoordinateSystem "web-mercator"
@@ -93,7 +121,7 @@ Expect `Saved 120 records`, date-only values, normalized `تهريب`/`تسلل`
 
 ### Run from CMD or PowerShell
 
-For a workbook whose first row already contains the English headers listed above:
+For a workbook whose first row already contains the English headers listed above **and whose coordinates are already WGS84 decimal degrees** (not the projected Excel mock):
 
 ```bat
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_incidents.ps1" -InputPath "incidents.xlsx" -OutputPath "incidents-clean.csv"
@@ -149,6 +177,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\clean_inciden
 ```
 
 This converts all coordinates in the file from metres to WGS84 degrees. The example above becomes approximately `24.323` latitude and `56.055` longitude. This interpretation is conditional on the confirmed source CRS, not proof of the incident's location. Do not use this option for UTM, another projection, or mixed coordinate systems; export those sources as WGS84 decimal degrees with a trusted offline GIS tool first. If the X/Y columns are reversed, correct the headers or column mapping first. The Python cleaner supports the same conversion with `--coordinate-system web-mercator`.
+
+The conversion itself is **fully offline**: the PowerShell script reads your local Excel workbook and uses built-in math. It makes no network requests and needs no Python, `pyproj`, JavaScript library, Microsoft Excel installation, or additional packages on the offline Windows PC. Download or transfer the script beforehand; the operational workbook never needs to leave that PC.
+
+For the supplied N/E values, the mapping under the Web Mercator interpretation is:
+
+| Source column | Source axis and value (metres) | Cleaned column and value (degrees) |
+| --- | --- | --- |
+| `latitude` | N/Y northing: `2792851.872` | `latitude`: `24.32328749` |
+| `longitude` | E/X easting: `6240057.303` | `longitude`: `56.05538849` |
+
+Do not swap these source columns: northing converts to latitude, and easting converts to longitude. The source headers describe the intended output axes, but the original cell values are still metres until conversion.
 
 ### Encoding and Validation
 

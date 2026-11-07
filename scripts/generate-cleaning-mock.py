@@ -4,10 +4,11 @@ from datetime import datetime
 from pathlib import Path
 
 from openpyxl import Workbook
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
-from clean_incidents import REQUIRED
+from clean_incidents import REQUIRED, clean_number
 
 
 RECORD_COUNT = 120
@@ -21,6 +22,10 @@ def main():
     worksheet = workbook.active
     worksheet.title = "Incidents"
     worksheet.append(list(REQUIRED) + ["ethnicity", "details"])
+    worksheet["E1"].comment = Comment("Source N/Y northing in EPSG:3857 metres. Convert to latitude degrees; do not swap with easting.", "Incident Analytics")
+    worksheet["F1"].comment = Comment("Source E/X easting in EPSG:3857 metres. Convert to longitude degrees; do not swap with northing.", "Incident Analytics")
+    degree_sheet = workbook.create_sheet("WGS84 Preview")
+    degree_sheet.append(list(REQUIRED) + ["ethnicity", "details"])
     categories = ("\u0627\u0644\u062a\u0633\u0644\u0644", "\u0627\u0644\u062a\u0647\u0631\u064a\u0628", "\u062a\u0633\u0644\u0644", "\u062a\u0647\u0631\u064a\u0628")
     for index in range(RECORD_COUNT):
         incident_date = datetime(2026, index % 12 + 1, 11 + index // 12, 13, 54, 46)
@@ -35,16 +40,25 @@ def main():
             "\u0623\u062b\u064a\u0648\u0628\u064a\u0627",
             'Synthetic test record, "not operational".' if index != 11 else "Synthetic test record\nSecond line for CSV quoting.",
         ])
+        degree_record = [cell.value for cell in worksheet[index + 2]]
+        for column, field in ((4, "latitude"), (5, "longitude")):
+            degree_record[column] = float(clean_number(degree_record[column], field, "web-mercator"))
+        degree_sheet.append(degree_record)
         worksheet.cell(index + 2, 1).number_format = "@"
         worksheet.cell(index + 2, 2).number_format = "yyyy-mm-dd hh:mm:ss"
+        degree_sheet.cell(index + 2, 1).number_format = "@"
+        degree_sheet.cell(index + 2, 2).number_format = "yyyy-mm-dd hh:mm:ss"
         for column in (5, 6):
             worksheet.cell(index + 2, column).number_format = "0.000"
+            degree_sheet.cell(index + 2, column).number_format = "0.00000000"
     worksheet.freeze_panes = "A2"
+    degree_sheet.freeze_panes = "A2"
     table = Table(displayName="MockIncidents", ref=f"A1:J{RECORD_COUNT + 1}")
     table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
     worksheet.add_table(table)
     for column, width in zip("ABCDEFGHIJ", (16, 23, 24, 52, 20, 20, 19, 18, 18, 55)):
         worksheet.column_dimensions[column].width = width
+        degree_sheet.column_dimensions[column].width = width
     for cell in worksheet[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="166534")
@@ -55,10 +69,12 @@ def main():
     for value in (
         "Synthetic cleaning mock - not operational data",
         f"The Incidents sheet has {RECORD_COUNT} synthetic records with the app's English headers.",
-        "This mock explicitly uses EPSG:3857: latitude = northing/Y metres; longitude = easting/X metres.",
+        "Source sheet Incidents uses EPSG:3857: latitude holds N/Y northing metres; longitude holds E/X easting metres. Do not swap the columns.",
         "The supplied coordinates are reused as a test fixture, not as proof of the real source CRS.",
         "Run the PowerShell cleaner with -Sheet Incidents -CoordinateSystem web-mercator.",
-        f"Expected: {RECORD_COUNT} records, dates YYYY-MM-DD, canonical Arabic incident types, latitude about 24.323 and longitude about 56.055.",
+        f"Expected: {RECORD_COUNT} records, dates YYYY-MM-DD, canonical Arabic incident types, latitude 24.32328749 and longitude 56.05538849.",
+        "WGS84 Preview contains already-converted degree values, not formulas. Clean that sheet with default WGS84 settings, without web-mercator conversion.",
+        "The Windows PowerShell cleaner reads the local Excel file and converts locally with built-in math; no internet, Python, Excel installation, or extra packages are needed.",
         "Upload the generated CSV to the app, not this Excel workbook.",
         "For real data, confirm the source CRS before choosing a conversion.",
     ):

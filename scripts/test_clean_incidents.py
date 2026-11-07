@@ -214,6 +214,10 @@ class CleaningTests(unittest.TestCase):
             self.assertEqual(rows[4]["incident_date"], "2026-05-11")
             self.assertEqual(rows[4]["latitude"], "24.32328749")
             self.assertEqual(rows[4]["longitude"], "56.05538849")
+            preview_output = Path(directory) / "preview.csv"
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main([str(source), str(preview_output), "--sheet", "WGS84 Preview"]), 0)
+            self.assertEqual(preview_output.read_bytes(), expected.read_bytes())
 
 
 class PowerShellCleaningTests(unittest.TestCase):
@@ -243,6 +247,11 @@ class PowerShellCleaningTests(unittest.TestCase):
             with source.with_name("mock-incidents-clean.csv").open(encoding="utf-8-sig", newline="") as handle:
                 expected = list(csv.DictReader(handle))
             self.assertEqual(actual, expected)
+            preview_output = Path(directory) / "preview.csv"
+            result = self.invoke(source, preview_output, "-Sheet", "WGS84 Preview")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with preview_output.open(encoding="utf-8-sig", newline="") as handle:
+                self.assertEqual(list(csv.DictReader(handle)), expected)
 
     def test_csv_arabic_mapping_and_app_importer(self):
         with tempfile.TemporaryDirectory() as directory:
