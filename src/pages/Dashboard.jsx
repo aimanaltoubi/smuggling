@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, BarChart3, TrendingUp, Target, Upload, ClipboardCheck, Workflow } from "lucide-react";
-import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
+import { useTacticalPrediction } from "@/lib/pipeline/tacticalClient";
 import OverviewSection from "@/components/analytics/OverviewSection";
 import EdaSection from "@/components/analytics/EdaSection";
 import ForecastSection from "@/components/analytics/ForecastSection";
@@ -9,6 +9,7 @@ import DataUploadSection from "@/components/analytics/DataUploadSection";
 import EvaluationSection from "@/components/analytics/EvaluationSection";
 import SystemGuideSection from "@/components/analytics/SystemGuideSection";
 import FloatingSystemChat from "@/components/analytics/FloatingSystemChat";
+import { preloadBasemap } from "@/components/analytics/OfflineBasemap";
 
 const TABS = [
   { id: "overview", label: "نظرة عامة", icon: BarChart3 },
@@ -24,17 +25,31 @@ export default function Dashboard() {
   const [incidents, setIncidents] = useState(null);
   const [activeTab, setActiveTab] = useState("upload");
 
+  useEffect(() => {
+    const schedule = window.requestIdleCallback || ((callback) => setTimeout(callback, 1000));
+    const cancel = window.cancelIdleCallback || clearTimeout;
+    const handle = schedule(preloadBasemap);
+    return () => cancel(handle);
+  }, []);
+
   // Smuggling and infiltration are predicted separately; no mixed-type tactical forecast exists.
-  const predictions = useMemo(() => {
-    if (!incidents || !incidents.length) return null;
+  const typeRows = useMemo(() => {
+    if (!incidents || !incidents.length) return { observationEnd: undefined, تهريب: [], تسلل: [] };
     let end = -Infinity;
     for (const i of incidents) { const t = Date.parse(i.incident_date); if (t > end) end = t; }
-    const observationEnd = Number.isFinite(end) ? new Date(end).toISOString() : undefined;
-    return Object.fromEntries(["تهريب", "تسلل"].map((type) => {
-      const rows = incidents.filter((i) => i.incident_type === type);
-      return [type, rows.length ? pipelineTacticalPrediction(rows, { horizonDays: 14, observationEnd }) : null];
-    }));
+    return {
+      observationEnd: Number.isFinite(end) ? new Date(end).toISOString() : undefined,
+      تهريب: incidents.filter((i) => i.incident_type === "تهريب"),
+      تسلل: incidents.filter((i) => i.incident_type === "تسلل"),
+    };
   }, [incidents]);
+  const smuggling = useTacticalPrediction(typeRows.تهريب, { horizonDays: 14, observationEnd: typeRows.observationEnd });
+  const infiltration = useTacticalPrediction(typeRows.تسلل, { horizonDays: 14, observationEnd: typeRows.observationEnd });
+  const tactical = {
+    observationEnd: typeRows.observationEnd,
+    byType: { تهريب: { rows: typeRows.تهريب, ...smuggling }, تسلل: { rows: typeRows.تسلل, ...infiltration } },
+  };
+  const predictions = { تهريب: smuggling.prediction, تسلل: infiltration.prediction };
 
   return (
     <div className="min-h-screen bg-background" dir="rtl">
@@ -79,7 +94,7 @@ export default function Dashboard() {
         {incidents && activeTab === "overview" && <OverviewSection incidents={incidents} />}
         {incidents && activeTab === "eda" && <EdaSection incidents={incidents} />}
         {incidents && activeTab === "forecast" && <ForecastSection incidents={incidents} />}
-        {incidents && activeTab === "prediction" && <PredictionSection incidents={incidents} />}
+        {incidents && activeTab === "prediction" && <PredictionSection tactical={tactical} />}
         {incidents && activeTab === "evaluation" && <EvaluationSection incidents={incidents} />}
         {activeTab === "system" && <SystemGuideSection />}
       </main>

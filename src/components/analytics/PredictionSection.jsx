@@ -1,7 +1,6 @@
-import React, { useMemo, useState } from "react";
-import { MapPin, CalendarClock, Users, Sparkles, CalendarOff, Activity } from "lucide-react";
+import React, { useState } from "react";
+import { MapPin, CalendarClock, Users, Sparkles, CalendarOff, Activity, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
 import IncidentMap from "./IncidentMap";
 import LocalForecastExplanation from "./LocalForecastExplanation";
 import { buildReportEvidence } from "@/lib/analytics/reportEvidence";
@@ -13,18 +12,12 @@ const TYPES = [
 
 // Smuggling and infiltration are separate phenomena, so each type gets its own
 // prediction run instead of one mixed forecast with a "likely type" label.
-export default function PredictionSection({ incidents }) {
+// Predictions arrive from Dashboard's worker-backed hook; nothing is computed here.
+export default function PredictionSection({ tactical }) {
   const [typeId, setTypeId] = useState(TYPES[0].id);
-  const observationEnd = useMemo(() => {
-    let end = -Infinity;
-    for (const i of incidents) { const t = Date.parse(i.incident_date); if (t > end) end = t; }
-    return Number.isFinite(end) ? new Date(end).toISOString() : undefined;
-  }, [incidents]);
-  const byType = useMemo(() => Object.fromEntries(TYPES.map((t) => {
-    const rows = incidents.filter((i) => i.incident_type === t.id);
-    return [t.id, { rows, prediction: rows.length ? pipelineTacticalPrediction(rows, { horizonDays: 14, observationEnd }) : null }];
-  })), [incidents, observationEnd]);
+  const { observationEnd, byType } = tactical;
   const counts = Object.fromEntries(TYPES.map((t) => [t.id, byType[t.id].rows.length]));
+  const active = byType[typeId];
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -39,7 +32,13 @@ export default function PredictionSection({ incidents }) {
         </div>
         <span className="text-xs text-muted-foreground">تنبؤ مستقل لكل نوع، محسوب من سجلات ذلك النوع فقط</span>
       </div>
-      <TypePrediction key={typeId} type={TYPES.find((t) => t.id === typeId)} incidents={byType[typeId].rows} prediction={byType[typeId].prediction} observationEnd={observationEnd} />
+      {active.status === "computing" ? (
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" /> جارٍ حساب تنبؤ {typeId} من {counts[typeId]} سجلاً… يعمل الحساب في الخلفية ويمكنك متابعة التصفح.
+        </div>
+      ) : (
+        <TypePrediction type={TYPES.find((t) => t.id === typeId)} incidents={active.rows} prediction={active.prediction} observationEnd={observationEnd} />
+      )}
     </div>
   );
 }

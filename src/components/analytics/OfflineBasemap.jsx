@@ -37,6 +37,38 @@ function geographyStyle(properties, zoom) {
   return [];
 }
 
+let basemapPromise;
+
+// Slicing the 80 MB GeoJSON into tiles takes seconds, so the sliced layer is
+// built once per app and moved between map instances on remount.
+function loadBasemap() {
+  window.L = Leaflet;
+  basemapPromise ??= Promise.all([loadGeography(), import("leaflet.vectorgrid")]).then(([data]) => {
+    if (!data.features?.length) throw new Error("Local map data is empty");
+    const streets = data.features.filter(feature => feature.properties.kind === "road" && feature.properties.name && Number.isFinite(feature.properties.labelLat))
+      .map(feature => ({ id: feature.properties.id, name: feature.properties.name, lat: feature.properties.labelLat, lon: feature.properties.labelLon, coordinates: feature.geometry.coordinates, kind: "street" }));
+    const layer = Leaflet.vectorGrid.slicer(data, {
+      rendererFactory: Leaflet.canvas.tile,
+      vectorTileLayerStyles: { sliced: geographyStyle },
+      pane: "tilePane",
+      maxNativeZoom: 14,
+      maxZoom: 16,
+      attribution: 'Natural Earth · <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> · ODbL',
+    });
+    return { layer, streets };
+  }).catch(error => {
+    basemapPromise = undefined;
+    throw error;
+  });
+  return basemapPromise;
+}
+
+// Parsing and slicing stall the main thread for a few seconds; do it while the
+// user is still on the upload screen instead of when the map first opens.
+export function preloadBasemap() {
+  loadBasemap().catch(() => {});
+}
+
 export default function OfflineBasemap({ onStreets }) {
   const map = useMap();
   const [status, setStatus] = useState("loading");
@@ -44,24 +76,18 @@ export default function OfflineBasemap({ onStreets }) {
   useEffect(() => {
     let cancelled = false;
     let layer;
+    const onLoad = () => setStatus("ready");
+    const onError = () => setStatus("error");
     setStatus("loading");
-    window.L = Leaflet;
-    Promise.all([loadGeography(), import("leaflet.vectorgrid")]).then(([data]) => {
+    loadBasemap().then((basemap) => {
       if (cancelled) return;
-      if (!data.features?.length) throw new Error("Local map data is empty");
-      onStreets(data.features.filter(feature => feature.properties.kind === "road" && feature.properties.name && Number.isFinite(feature.properties.labelLat))
-        .map(feature => ({ id: feature.properties.id, name: feature.properties.name, lat: feature.properties.labelLat, lon: feature.properties.labelLon, coordinates: feature.geometry.coordinates, kind: "street" })));
-      layer = Leaflet.vectorGrid.slicer(data, {
-        rendererFactory: Leaflet.canvas.tile,
-        vectorTileLayerStyles: { sliced: geographyStyle },
-        pane: "tilePane",
-        maxNativeZoom: 14,
-        maxZoom: 16,
-        attribution: 'Natural Earth · <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> · ODbL',
-      });
-      layer.once("load", () => { if (!cancelled) setStatus("ready"); });
-      layer.on("tileerror", () => { if (!cancelled) setStatus("error"); });
+      layer = basemap.layer;
+      onStreets(basemap.streets);
+      if (layer._map && layer._map !== map) layer.remove();
+      layer.on("load", onLoad);
+      layer.on("tileerror", onError);
       layer.addTo(map);
+      if (!layer.isLoading()) setStatus("ready");
     }).catch(error => {
       if (!cancelled) {
         console.error("Offline map could not load", error);
@@ -71,8 +97,9 @@ export default function OfflineBasemap({ onStreets }) {
     return () => {
       cancelled = true;
       if (layer) {
+        layer.off("load", onLoad);
+        layer.off("tileerror", onError);
         layer.remove();
-        layer._worker?.terminate();
       }
     };
   }, [map, onStreets, attempt]);

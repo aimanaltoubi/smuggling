@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { CircleMarker, GeoJSON, MapContainer, Popup, Rectangle, ScaleControl, Tooltip, useMap, useMapEvents } from "react-leaflet";
-import { latLngBounds } from "leaflet";
+import { circleMarker, latLngBounds, layerGroup } from "leaflet";
 import { LocateFixed, MapPin, Search, X } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 import "./IncidentMap.css";
-import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
+import { useTacticalPrediction } from "@/lib/pipeline/tacticalClient";
 import omanPlaces from "@/lib/analytics/omanPlaces.json";
 import omanBoundaries from "@/lib/analytics/omanBoundaries.json";
 import { BORDER_DISTANCE_KM, buildBorderStatistics } from "@/lib/analytics/borderAnalytics";
@@ -146,6 +146,21 @@ function GeographicLabels({ streets }) {
   });
   return labels.map((label) => <CircleMarker key={label.id} center={[label.lat, label.lon]} radius={label.governorate || label.kind === "street" ? 0 : 2} interactive={false} pathOptions={{ color: "#374151", fillOpacity: 1, opacity: label.governorate || label.kind === "street" ? 0 : 1 }}><Tooltip permanent direction="center" className={label.governorate ? "oman-governorate-label" : label.kind === "street" ? "oman-street-label" : "oman-city-label"}><span title={label.englishName || label.name}>{label.name}</span></Tooltip></CircleMarker>);
 }
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// Thousands of per-incident React components made the tab sluggish; one plain
+// Leaflet layer group on the canvas renderer is much cheaper to mount.
+function IncidentPoints({ incidents }) {
+  const map = useMap();
+  useEffect(() => {
+    const group = layerGroup(incidents.map((incident) => circleMarker([Number(incident.latitude), Number(incident.longitude)], { radius: 5, color: "#ffffff", weight: 1, fillColor: typeColor(incident.incident_type), fillOpacity: 0.9 })
+      .bindPopup(`<div dir="rtl"><strong>${escapeHtml(incident.incident_type)}</strong><br />${escapeHtml(incident.location_name)}<br />${escapeHtml(incident.governorate)}<br />التاريخ: ${escapeHtml(fmtDate(incident.incident_date))}<br />المعتقلون: ${escapeHtml(incident.detained_count)}</div>`)));
+    group.addTo(map);
+    return () => { group.remove(); };
+  }, [map, incidents]);
+  return null;
+}
+
 function buildOmanPrioGrid(incidents, prediction) {
   // Aggregate incidents per cell
   const agg = {};
@@ -201,9 +216,9 @@ function buildOmanPrioGrid(incidents, prediction) {
 
 const BORDER_COLORS = { uae: "#9f3a38", saudi: "#a66a25", yemen: "#4d7e46", coast: "#2a7e9b" };
 
-export default function IncidentMap({ incidents, height = 560, observationEnd }) {
+export default function IncidentMap({ incidents, height = 560, observationEnd, prediction }) {
   const hasData = incidents && incidents.length > 0;
-  const shown = hasData
+  const shown = useMemo(() => (hasData
     ? incidents.filter((incident) => (
       incident.latitude != null
       && incident.longitude != null
@@ -214,18 +229,21 @@ export default function IncidentMap({ incidents, height = 560, observationEnd })
       && Number(incident.longitude) >= -180
       && Number(incident.longitude) <= 180
     ))
-    : [];
+    : []), [incidents, hasData]);
   const [streetLabels, setStreetLabels] = useState([]);
   const [view, setView] = useState("points"); // "prio" | "sectors" | "points"
   const [horizon, setHorizon] = useState("14"); // "14" (two weeks) | "30" (one month)
   const pointTypeCounts = useMemo(() => shown.reduce((counts, incident) => {
     counts[incident.incident_type] = (counts[incident.incident_type] || 0) + 1;
     return counts;
-  }, {}), [incidents, hasData]);
+  }, {}), [shown]);
 
-  const pred14 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 14, observationEnd }) : null), [incidents, hasData, observationEnd]);
-  const pred30 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 30, observationEnd }) : null), [incidents, hasData, observationEnd]);
-  const activePrediction = horizon === "14" ? pred14 : pred30;
+  // The 14-day run is shared from the parent; the 30-day run is only computed when asked for.
+  const own14 = useTacticalPrediction(incidents, { horizonDays: 14, observationEnd }, hasData && prediction === undefined);
+  const pred14 = prediction === undefined ? own14.prediction : prediction;
+  const run30 = useTacticalPrediction(incidents, { horizonDays: 30, observationEnd }, hasData && view === "prio" && horizon === "30");
+  const activePrediction = horizon === "14" ? pred14 : run30.prediction;
+  const predictionPending = horizon === "30" ? run30.status === "computing" : prediction === undefined && own14.status === "computing";
 
   const prioGrid = useMemo(() => (hasData ? buildOmanPrioGrid(incidents, activePrediction) : []), [incidents, hasData, activePrediction]);
   const sectors = useMemo(() => (hasData && view === "sectors" ? buildBorderStatistics(incidents, omanBoundaries.features) : []), [incidents, hasData, view]);
@@ -262,6 +280,7 @@ export default function IncidentMap({ incidents, height = 560, observationEnd })
           <span className="text-xs text-muted-foreground">أفق التنبؤ:</span>
           <button onClick={() => setHorizon("14")} className={btn(horizon === "14")}>أسبوعان</button>
           <button onClick={() => setHorizon("30")} className={btn(horizon === "30")}>شهر</button>
+          {predictionPending && <span className="text-xs text-muted-foreground">جارٍ حساب التنبؤ…</span>}
         </div>
       )}
 
@@ -274,7 +293,7 @@ export default function IncidentMap({ incidents, height = 560, observationEnd })
           border: "1px solid hsl(var(--border))",
         }}
       >
-        <MapContainer className="oman-offline-map" bounds={MAP_BOUNDS} maxBounds={MAP_BOUNDS.pad(0.15)} maxBoundsViscosity={1} zoomSnap={0.25} zoomDelta={0.5} maxZoom={16} scrollWheelZoom={false} style={{ height: "100%", width: "100%" }}>
+        <MapContainer className="oman-offline-map" bounds={MAP_BOUNDS} maxBounds={MAP_BOUNDS.pad(0.15)} maxBoundsViscosity={1} zoomSnap={0.25} zoomDelta={0.5} maxZoom={16} scrollWheelZoom={false} preferCanvas style={{ height: "100%", width: "100%" }}>
           <OfflineBasemap onStreets={setStreetLabels} />
           <MapViewport />
           <PlaceSearch />
@@ -291,11 +310,7 @@ export default function IncidentMap({ incidents, height = 560, observationEnd })
               <Popup><div dir="rtl"><strong>{sector.name}</strong><br />الحوادث ضمن {BORDER_DISTANCE_KM} كم: {sector.count}<br />المعتقلون: {sector.detained}<br />{Object.entries(sector.types).map(([type, count]) => <div key={type}>{type}: {count}</div>)}<br />المصدر: OpenStreetMap - حدود مرجعية</div></Popup>
             </GeoJSON>
           ))}
-          {view === "points" && shown.map((incident, index) => (
-            <CircleMarker key={`${incident.incident_id}-${index}`} center={[Number(incident.latitude), Number(incident.longitude)]} radius={5} pathOptions={{ color: "#ffffff", weight: 1, fillColor: typeColor(incident.incident_type), fillOpacity: 0.9 }}>
-              <Popup><div dir="rtl"><strong>{incident.incident_type}</strong><br />{incident.location_name}<br />{incident.governorate}<br />التاريخ: {fmtDate(incident.incident_date)}<br />المعتقلون: {incident.detained_count}</div></Popup>
-            </CircleMarker>
-          ))}
+          {view === "points" && <IncidentPoints incidents={shown} />}
           {view === "prio" && activePrediction && predCoords && (
             <CircleMarker center={[Number(predCoords.lat), Number(predCoords.lon)]} radius={9} pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#ea580c", fillOpacity: 1 }}>
               <Tooltip>التنبؤ: {activePrediction.where.governorate}</Tooltip>
@@ -307,8 +322,8 @@ export default function IncidentMap({ incidents, height = 560, observationEnd })
 
       {view === "points" && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: typeColor("تهريب") }} />تهريب ({pointTypeCounts["تهريب"] || 0})</span>
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: typeColor("تسلل") }} />تسلل ({pointTypeCounts["تسلل"] || 0})</span>
+          {pointTypeCounts["تهريب"] > 0 && <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: typeColor("تهريب") }} />تهريب ({pointTypeCounts["تهريب"]})</span>}
+          {pointTypeCounts["تسلل"] > 0 && <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: typeColor("تسلل") }} />تسلل ({pointTypeCounts["تسلل"]})</span>}
           {shown.length > (pointTypeCounts["تهريب"] || 0) + (pointTypeCounts["تسلل"] || 0) && <span>أنواع أخرى ({shown.length - (pointTypeCounts["تهريب"] || 0) - (pointTypeCounts["تسلل"] || 0)})</span>}
           <span>المواقع المعروضة: {shown.length} من أصل {incidents?.length || 0} سجل</span>
         </div>
