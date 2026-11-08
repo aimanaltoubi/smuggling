@@ -16,8 +16,9 @@ export async function runComprehensiveEvaluation({ incidents = [], source = 'rea
       for (const target of ['incidents', 'detained_count']) {
         const report = await monthlyBacktest(records, target, dataset.observedEnd, text => onProgress(`${dataset.name} / ${type}: ${text}`));
         reports.push({ ...report, name: dataset.name, type });
-        if (type === 'all' && target === 'incidents' && report.origins.length) {
-          tactical.push({ name: dataset.name, ...await tacticalBacktest(records, report.origins, onProgress) });
+        // The app only shows per-type tactical predictions, so the backtest evaluates those.
+        if (type !== 'all' && target === 'incidents' && report.origins.length) {
+          tactical.push({ name: `${dataset.name} / ${type}`, type, ...await tacticalBacktest(records, report.origins, onProgress) });
         }
       }
     }

@@ -12,7 +12,7 @@ if not exist "%USERPROFILE%\Desktop\OmanIncidentAnalytics" mkdir "%USERPROFILE%\
 
 Paste the command exactly as one line. Do not type `bat`; it is only the Markdown code-block label.
 
-**Install v1.0.9 or newer for all updates described here**, including the detailed offline map, corrected border statistics, six-section pattern analysis, floating system assistant, models/pipeline guide, incomplete-final-month handling in seasonal forecasts, and readable governorate labels. Installed copies do not update automatically: download and run the new installer.
+**Install v1.0.10 or newer for all updates described here**, including the detailed offline map, corrected border statistics, six-section pattern analysis, floating system assistant, models/pipeline guide, incomplete-final-month handling in seasonal forecasts, readable governorate labels, and separate smuggling and infiltration tactical predictions with a graded risk grid. Installed copies do not update automatically: download and run the new installer.
 
 This command downloads the latest successfully published installer. Copy that single installer EXE to a USB drive and transfer it to the offline PC. Run it there to install the complete app, including the map, model runtime, and 1.12 GB language model. The offline PC does not need CMD setup, Node.js, or internet access. A source-code push alone does not update the EXE: the versioned Windows release build must finish and publish its installer first.
 

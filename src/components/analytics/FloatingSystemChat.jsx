@@ -10,7 +10,7 @@ function dateText(children) {
     : child);
 }
 
-export default function FloatingSystemChat({ incidents, prediction, activeTab }) {
+export default function FloatingSystemChat({ incidents, predictions, activeTab }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
@@ -52,8 +52,10 @@ export default function FloatingSystemChat({ incidents, prediction, activeTab })
     const type = prompt.includes("تهريب") && !prompt.includes("تسلل") ? "تهريب" : prompt.includes("تسلل") && !prompt.includes("تهريب") ? "تسلل" : null;
     const available = Object.values(forecasts).filter(facts => /معتقل|detain/i.test(facts.target || "") === detachedTarget && (!type || facts.incidentType?.includes(type)));
     const asksAnnual = /(?:ال|لل)سنة القادم(?:ة)?|(?:ال|لل)سنة المقبل(?:ة)?|(?:ال|لل)عام القادم|(?:ال|لل)عام المقبل|الاثني عشر شهرا|الاثني عشر شهراً|12 شهرا|12 شهراً|next year|year ahead|next 12 months/i.test(prompt);
+    const tacticalType = type || ["تهريب", "تسلل"].find(candidate => predictions?.[candidate]) || null;
+    const prediction = tacticalType ? predictions?.[tacticalType] || null : null;
     const tactical = prediction ? {
-      forecast: "tactical", target: "عدد الحوادث", observedEvidence: evidence,
+      forecast: "tactical", target: "عدد الحوادث", incidentType: tacticalType, observedEvidence: evidence,
       window: { start: prediction.forecastWindow.startLabel, end: prediction.forecastWindow.endLabel },
       expectedIncidentTotal: prediction.when.totalExpectedIncidents,
       dailyIncidentForecast: prediction.when.dailyBreakdown.map(day => ({ date: day.label, expectedIncidents: day.expected })),

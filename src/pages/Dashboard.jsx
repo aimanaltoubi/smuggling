@@ -24,10 +24,17 @@ export default function Dashboard() {
   const [incidents, setIncidents] = useState(null);
   const [activeTab, setActiveTab] = useState("upload");
 
-  const prediction = useMemo(
-    () => (incidents && incidents.length ? pipelineTacticalPrediction(incidents, { horizonDays: 14 }) : null),
-    [incidents]
-  );
+  // Smuggling and infiltration are predicted separately; no mixed-type tactical forecast exists.
+  const predictions = useMemo(() => {
+    if (!incidents || !incidents.length) return null;
+    let end = -Infinity;
+    for (const i of incidents) { const t = Date.parse(i.incident_date); if (t > end) end = t; }
+    const observationEnd = Number.isFinite(end) ? new Date(end).toISOString() : undefined;
+    return Object.fromEntries(["تهريب", "تسلل"].map((type) => {
+      const rows = incidents.filter((i) => i.incident_type === type);
+      return [type, rows.length ? pipelineTacticalPrediction(rows, { horizonDays: 14, observationEnd }) : null];
+    }));
+  }, [incidents]);
 
   return (
     <div className="min-h-screen bg-background" dir="rtl">
@@ -69,14 +76,14 @@ export default function Dashboard() {
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
         {activeTab === "upload" && <DataUploadSection onImported={setIncidents} onGoToEDA={() => setActiveTab("eda")} />}
-        {incidents && activeTab === "overview" && <OverviewSection incidents={incidents} prediction={prediction} />}
+        {incidents && activeTab === "overview" && <OverviewSection incidents={incidents} />}
         {incidents && activeTab === "eda" && <EdaSection incidents={incidents} />}
         {incidents && activeTab === "forecast" && <ForecastSection incidents={incidents} />}
         {incidents && activeTab === "prediction" && <PredictionSection incidents={incidents} />}
         {incidents && activeTab === "evaluation" && <EvaluationSection incidents={incidents} />}
         {activeTab === "system" && <SystemGuideSection />}
       </main>
-      <FloatingSystemChat incidents={incidents} prediction={prediction} activeTab={activeTab} />
+      <FloatingSystemChat incidents={incidents} predictions={predictions} activeTab={activeTab} />
     </div>
   );
 }

@@ -149,59 +149,51 @@ function GeographicLabels({ streets }) {
 function buildOmanPrioGrid(incidents, prediction) {
   // Aggregate incidents per cell
   const agg = {};
+  const govCounts = {};
   for (const inc of incidents) {
     if (inc.latitude == null || inc.longitude == null) continue;
     const id = prioidFromLatLng(inc.latitude, inc.longitude);
-    if (!agg[id]) agg[id] = { prioid: id, count: 0, detained: 0, types: {}, govs: {} };
+    if (!agg[id]) agg[id] = { prioid: id, count: 0, detained: 0, types: {}, govs: {}, latSum: 0, lngSum: 0 };
     const c = agg[id];
     c.count += 1;
     c.detained += inc.detained_count || 0;
+    c.latSum += Number(inc.latitude);
+    c.lngSum += Number(inc.longitude);
     c.types[inc.incident_type] = (c.types[inc.incident_type] || 0) + 1;
-    if (inc.governorate) c.govs[inc.governorate] = (c.govs[inc.governorate] || 0) + 1;
+    if (inc.governorate) {
+      c.govs[inc.governorate] = (c.govs[inc.governorate] || 0) + 1;
+      govCounts[inc.governorate] = (govCounts[inc.governorate] || 0) + 1;
+    }
   }
   // Governorate risk ranking from the prediction model
   const govRisk = {};
   if (prediction?.where?.ranking) prediction.where.ranking.forEach((r) => { govRisk[r.governorate] = r.score; });
   const predictedGov = prediction?.where?.governorate || null;
-  // Peak predicted cell (from prediction coordinates if available)
-  let peakPrioid = null;
-  if (prediction?.where) {
-    const rec = incidents.find((i) => i.governorate === predictedGov);
-    if (rec) peakPrioid = prioidFromLatLng(rec.latitude, rec.longitude);
-  }
-  // Enumerate ALL cells intersecting the Oman bounding box
-  const all = [];
-  const startLng = Math.floor((OMAN_BOUNDS.lngMin + 180) / 0.5) * 0.5 - 180;
-  const startLat = Math.floor((OMAN_BOUNDS.latMin + 90) / 0.5) * 0.5 - 90;
-  for (let lng = startLng; lng < OMAN_BOUNDS.lngMax; lng += 0.5) {
-    for (let lat = startLat; lat < OMAN_BOUNDS.latMax; lat += 0.5) {
-      const id = prioidFromLatLng(lat + 0.001, lng + 0.001);
-      const b = cellBoundsFromPrioid(id);
-      const e = agg[id];
-      const count = e?.count || 0;
-      const detained = e?.detained || 0;
-      let gov = null;
-      if (e && Object.keys(e.govs).length) gov = Object.entries(e.govs).sort((x, y) => y[1] - x[1])[0][0];
-      all.push({
-        prioid: id, bounds: b, count, detained,
-        governorate: gov,
-        govRisk: gov ? govRisk[gov] || 0 : 0,
-        isPredictionArea: gov === predictedGov,
-        isPeak: id === peakPrioid,
-      });
-    }
-  }
+  // Only cells with observed activity are drawn; empty sea/desert cells added nothing but clutter.
+  const all = Object.values(agg).map((e) => {
+    const gov = Object.keys(e.govs).length ? Object.entries(e.govs).sort((x, y) => y[1] - x[1])[0][0] : null;
+    // Predicted governorate share spread over its cells by past within-governorate distribution.
+    const forecastShare = gov && govCounts[gov] ? (govRisk[gov] || 0) * (e.govs[gov] / govCounts[gov]) : 0;
+    return {
+      prioid: e.prioid, bounds: cellBoundsFromPrioid(e.prioid), count: e.count, detained: e.detained, types: e.types,
+      center: { lat: e.latSum / e.count, lng: e.lngSum / e.count },
+      governorate: gov, govRisk: gov ? govRisk[gov] || 0 : 0, forecastShare,
+      isPredictionArea: gov === predictedGov, isPeak: false,
+    };
+  });
+  const peak = all.filter((c) => c.isPredictionArea).sort((a, b) => b.forecastShare - a.forecastShare)[0];
+  if (peak) peak.isPeak = true;
   const maxCount = Math.max(1, ...all.map((c) => c.count));
+  const maxShare = Math.max(1e-9, ...all.map((c) => c.forecastShare));
   for (const c of all) {
     c.baseRisk = c.count / maxCount;
+    c.forecastIntensity = c.forecastShare / maxShare;
     if (c.isPeak) {
       c.color = "#f59e0b";
     } else if (c.isPredictionArea) {
       c.color = "#ea580c";
-    } else if (c.count > 0) {
-      c.color = `hsl(0, ${c.baseRisk * 100}%, 50%)`;
     } else {
-      c.color = "#94a3b8";
+      c.color = `hsl(0, ${c.baseRisk * 100}%, 50%)`;
     }
   }
   return all;
@@ -209,7 +201,7 @@ function buildOmanPrioGrid(incidents, prediction) {
 
 const BORDER_COLORS = { uae: "#9f3a38", saudi: "#a66a25", yemen: "#4d7e46", coast: "#2a7e9b" };
 
-export default function IncidentMap({ incidents, height = 560 }) {
+export default function IncidentMap({ incidents, height = 560, observationEnd }) {
   const hasData = incidents && incidents.length > 0;
   const shown = hasData
     ? incidents.filter((incident) => (
@@ -231,19 +223,17 @@ export default function IncidentMap({ incidents, height = 560 }) {
     return counts;
   }, {}), [incidents, hasData]);
 
-  const pred14 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 14 }) : null), [incidents, hasData]);
-  const pred30 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 30 }) : null), [incidents, hasData]);
+  const pred14 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 14, observationEnd }) : null), [incidents, hasData, observationEnd]);
+  const pred30 = useMemo(() => (hasData ? pipelineTacticalPrediction(incidents, { horizonDays: 30, observationEnd }) : null), [incidents, hasData, observationEnd]);
   const activePrediction = horizon === "14" ? pred14 : pred30;
 
   const prioGrid = useMemo(() => (hasData ? buildOmanPrioGrid(incidents, activePrediction) : []), [incidents, hasData, activePrediction]);
   const sectors = useMemo(() => (hasData && view === "sectors" ? buildBorderStatistics(incidents, omanBoundaries.features) : []), [incidents, hasData, view]);
 
   const predCoords = useMemo(() => {
-    if (!activePrediction) return null;
-    const g = activePrediction.where.governorate;
-    const rec = incidents.find((i) => i.governorate === g);
-    return rec ? { lon: rec.longitude, lat: rec.latitude } : null;
-  }, [activePrediction, incidents]);
+    const peak = prioGrid.find((cell) => cell.isPeak);
+    return peak ? { lon: peak.center.lng, lat: peak.center.lat } : null;
+  }, [prioGrid]);
 
   const btn = (active) => `px-3 py-1.5 rounded-lg text-sm ${active ? "bg-slate-900 text-white" : "bg-muted"}`;
 
@@ -257,11 +247,12 @@ export default function IncidentMap({ incidents, height = 560 }) {
         </div>
         {view === "prio" && prioGrid.length > 0 && (
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span>النشاط النسبي:</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,20%,50%)" }} />منخفضة</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,60%,50%)" }} />متوسطة</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,100%,50%)" }} />عالية</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(30,85%,50%)" }} />منطقة تنبؤ</span>
+            <span>نشاط سابق:</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,20%,50%)", opacity: 0.5 }} />منخفض</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "hsl(0,100%,50%)", opacity: 0.5 }} />عالٍ</span>
+            <span>| المحافظة المتوقعة:</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#ea580c", opacity: 0.2 }} />حصة متوقعة ضعيفة</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border-2 border-amber-700" style={{ background: "#f59e0b" }} />ذروة التنبؤ</span>
           </div>
         )}
       </div>
@@ -290,8 +281,8 @@ export default function IncidentMap({ incidents, height = 560 }) {
           <ScaleControl position="bottomleft" imperial={false} />
           <GeographicLabels streets={streetLabels} />
           {view === "prio" && prioGrid.map((cell) => (
-            <Rectangle key={cell.prioid} bounds={[[cell.bounds.south, cell.bounds.west], [cell.bounds.north, cell.bounds.east]]} pathOptions={{ color: cell.isPeak ? "#b45309" : cell.color, weight: cell.isPeak ? 2 : 0.5, fillColor: cell.color, fillOpacity: cell.isPeak ? 0.65 : cell.isPredictionArea ? 0.4 : cell.count ? 0.35 : 0.06 }}>
-              <Popup><div dir="rtl"><strong>{cell.governorate || "منطقة غير محددة"}</strong>{cell.isPeak && " - ذروة التنبؤ"}<br />مؤشر النشاط النسبي: {(cell.baseRisk * 100).toFixed(0)}%<br />الحوادث: {cell.count}<br />المعتقلون: {cell.detained}</div></Popup>
+            <Rectangle key={cell.prioid} bounds={[[cell.bounds.south, cell.bounds.west], [cell.bounds.north, cell.bounds.east]]} pathOptions={{ color: cell.isPeak ? "#b45309" : cell.color, weight: cell.isPeak ? 2 : 0.5, fillColor: cell.color, fillOpacity: cell.isPeak ? 0.65 : cell.isPredictionArea ? 0.1 + 0.4 * cell.forecastIntensity : 0.1 + 0.3 * cell.baseRisk }}>
+              <Popup><div dir="rtl"><strong>{cell.governorate || "منطقة غير محددة"}</strong>{cell.isPeak && " - ذروة التنبؤ"}<br />الحوادث السابقة: {cell.count} ({(cell.baseRisk * 100).toFixed(0)}% من أعلى خلية)<br />المعتقلون: {cell.detained}<br />{cell.isPredictionArea ? `حصة متوقعة من حوادث النافذة: ${(cell.forecastShare * 100).toFixed(1)}% (توزيع حصة المحافظة حسب النشاط السابق)` : "اللون يعكس النشاط السابق فقط، لا تنبؤاً"}</div></Popup>
             </Rectangle>
           ))}
           {view === "sectors" && sectors.map((sector) => (
@@ -308,7 +299,7 @@ export default function IncidentMap({ incidents, height = 560 }) {
           {view === "prio" && activePrediction && predCoords && (
             <CircleMarker center={[Number(predCoords.lat), Number(predCoords.lon)]} radius={9} pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#ea580c", fillOpacity: 1 }}>
               <Tooltip>التنبؤ: {activePrediction.where.governorate}</Tooltip>
-              <Popup><div dir="rtl"><strong>التنبؤ: الحدث القادم</strong><br />{activePrediction.where.governorate}<br />{activePrediction.forecastWindow.startLabel} - {activePrediction.forecastWindow.endLabel}<br />الحوادث المتوقعة: {activePrediction.when.totalExpectedIncidents}<br />المعتقلون المتوقعون: {activePrediction.howMany.expectedTotalDetained}</div></Popup>
+              <Popup><div dir="rtl"><strong>التنبؤ: الحدث القادم</strong><br />{activePrediction.where.governorate}<br />{activePrediction.forecastWindow.startLabel} - {activePrediction.forecastWindow.endLabel}<br />الحوادث المتوقعة: {activePrediction.when.totalExpectedIncidents.toFixed(1)}<br />المعتقلون المتوقعون: {activePrediction.howMany.expectedTotalDetained.toFixed(1)}</div></Popup>
             </CircleMarker>
           )}
         </MapContainer>
@@ -325,7 +316,7 @@ export default function IncidentMap({ incidents, height = 560 }) {
 
       {view === "prio" && prioGrid.length > 0 && activePrediction && (
         <p className="text-xs text-muted-foreground">
-          النشاط النسبي حسب الحوادث السابقة — {prioGrid.length} منطقة. أفق التنبؤ الحالي: {horizon === "14" ? "أسبوعان" : "شهر"} ({activePrediction.forecastWindow.startLabel} ← {activePrediction.forecastWindow.endLabel}) — {activePrediction.when.totalExpectedIncidents} حادث متوقع، {activePrediction.howMany.expectedTotalDetained} معتقل. المناطق البرتقالية هي مواقع التنبؤ المحتملة (★ منطقة التنبؤ الأبرز).
+          تُرسم فقط الخلايا (0.5°) التي سجلت حوادث سابقة: {prioGrid.length} خلية. الخلايا الحمراء تعكس النشاط السابق فقط. الخلايا البرتقالية تقع في المحافظة المتوقعة ({activePrediction.where.governorate}) وتتدرج شدتها حسب حصتها المتوقعة، والخلية المؤطرة هي ذروة التنبؤ. أفق التنبؤ: {horizon === "14" ? "أسبوعان" : "شهر"} ({activePrediction.forecastWindow.startLabel} ← {activePrediction.forecastWindow.endLabel}) — {activePrediction.when.totalExpectedIncidents.toFixed(1)} حادث متوقع، {activePrediction.howMany.expectedTotalDetained.toFixed(1)} معتقل.
         </p>
       )}
       {view === "sectors" && sectors.length > 0 && (

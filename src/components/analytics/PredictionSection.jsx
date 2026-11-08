@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { MapPin, CalendarClock, Users, Sparkles, CalendarOff, Activity } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { pipelineTacticalPrediction } from "@/lib/pipeline/PipelineBridge";
@@ -6,14 +6,47 @@ import IncidentMap from "./IncidentMap";
 import LocalForecastExplanation from "./LocalForecastExplanation";
 import { buildReportEvidence } from "@/lib/analytics/reportEvidence";
 
-export default function PredictionSection({ incidents }) {
-  const prediction = useMemo(() => {
-    if (!incidents.length) return null;
-    return pipelineTacticalPrediction(incidents, { horizonDays: 14 });
-  }, [incidents]);
+const TYPES = [
+  { id: "تهريب", accent: "#dc2626", activeClass: "bg-red-600 text-white" },
+  { id: "تسلل", accent: "#2563eb", activeClass: "bg-blue-600 text-white" },
+];
 
+// Smuggling and infiltration are separate phenomena, so each type gets its own
+// prediction run instead of one mixed forecast with a "likely type" label.
+export default function PredictionSection({ incidents }) {
+  const [typeId, setTypeId] = useState(TYPES[0].id);
+  const observationEnd = useMemo(() => {
+    let end = -Infinity;
+    for (const i of incidents) { const t = Date.parse(i.incident_date); if (t > end) end = t; }
+    return Number.isFinite(end) ? new Date(end).toISOString() : undefined;
+  }, [incidents]);
+  const byType = useMemo(() => Object.fromEntries(TYPES.map((t) => {
+    const rows = incidents.filter((i) => i.incident_type === t.id);
+    return [t.id, { rows, prediction: rows.length ? pipelineTacticalPrediction(rows, { horizonDays: 14, observationEnd }) : null }];
+  })), [incidents, observationEnd]);
+  const counts = Object.fromEntries(TYPES.map((t) => [t.id, byType[t.id].rows.length]));
+
+  return (
+    <div className="space-y-6" dir="rtl">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm text-muted-foreground">نوع الحوادث:</span>
+        <div className="flex gap-2">
+          {TYPES.map((t) => (
+            <button key={t.id} onClick={() => setTypeId(t.id)} className={`px-3 py-1.5 rounded-lg text-sm ${typeId === t.id ? t.activeClass : "bg-muted"}`}>
+              {t.id} ({counts[t.id]})
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-muted-foreground">تنبؤ مستقل لكل نوع، محسوب من سجلات ذلك النوع فقط</span>
+      </div>
+      <TypePrediction key={typeId} type={TYPES.find((t) => t.id === typeId)} incidents={byType[typeId].rows} prediction={byType[typeId].prediction} observationEnd={observationEnd} />
+    </div>
+  );
+}
+
+function TypePrediction({ type, incidents, prediction, observationEnd }) {
   if (!prediction) {
-    return <div className="text-muted-foreground" dir="rtl">لا توجد بيانات كافية للتنبؤ</div>;
+    return <div className="text-muted-foreground" dir="rtl">لا توجد بيانات كافية للتنبؤ بحوادث {type.id} (يلزم سجلان على الأقل في ثلاثة أشهر مختلفة)</div>;
   }
 
   const dailyData = prediction.when.dailyBreakdown.map((d) => ({
@@ -26,11 +59,10 @@ export default function PredictionSection({ incidents }) {
     <div className="space-y-6" dir="rtl">
       {/* Predictive map (PRIO-GRID with forecast overlay) */}
       <div>
-        <h3 className="font-semibold mb-3">خريطة المخاطر والتنبؤ</h3>
-        <IncidentMap incidents={incidents} prediction={prediction} />
+        <h3 className="font-semibold mb-3" style={{ color: type.accent }}>خريطة المخاطر والتنبؤ — {type.id}</h3>
+        <IncidentMap incidents={incidents} prediction={prediction} observationEnd={observationEnd} />
         <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> تهريب</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-600 inline-block" /> تسلل</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: type.accent }} /> حوادث {type.id}</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block border-2 border-white" /> التنبؤ بالحدث القادم</span>
         </div>
       </div>
@@ -39,13 +71,13 @@ export default function PredictionSection({ incidents }) {
       <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
         <div className="flex items-center gap-2 text-amber-700 mb-2">
           <Sparkles className="w-4 h-4" />
-          <span className="text-sm font-medium">تنبؤ تكتيكي ديناميكي بالحدث القادم</span>
+          <span className="text-sm font-medium">تنبؤ تكتيكي ديناميكي بالحدث القادم — {type.id}</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
           <div className="flex items-start gap-2">
             <CalendarOff className="w-4 h-4 text-amber-600 mt-0.5" />
             <div>
-              <div className="text-muted-foreground text-xs">آخر سجل في البيانات</div>
+              <div className="text-muted-foreground text-xs">آخر سجل في البيانات (جميع الأنواع)</div>
               <div className="font-medium">{prediction.dataEndpoint.lastDateLabel}</div>
             </div>
           </div>
@@ -60,7 +92,7 @@ export default function PredictionSection({ incidents }) {
             <Activity className="w-4 h-4 text-amber-600 mt-0.5" />
             <div>
               <div className="text-muted-foreground text-xs">معدل الأنبوب (شهر → يوم)</div>
-              <div className="font-medium">{prediction.model.monthlyRate} حادث/شهر — {prediction.model.dailyRate} حادث/يوم | {prediction.model.pipelineModel}</div>
+              <div className="font-medium">{fmt(prediction.model.monthlyRate)} حادث/شهر — {fmt(prediction.model.dailyRate)} حادث/يوم | {prediction.model.pipelineModel}</div>
             </div>
           </div>
         </div>
@@ -75,9 +107,9 @@ export default function PredictionSection({ incidents }) {
             <CalendarClock className="w-4 h-4" />
             <span>متى (خلال {prediction.forecastWindow.days} يوماً)</span>
           </div>
-          <div className="text-2xl font-bold">{prediction.when.totalExpectedIncidents} <span className="text-sm font-normal text-muted-foreground">حادث متوقع</span></div>
+          <div className="text-2xl font-bold">{fmt(prediction.when.totalExpectedIncidents)} <span className="text-sm font-normal text-muted-foreground">حادث {type.id} متوقع</span></div>
           <div className="text-sm text-muted-foreground mt-1">الذروة: {prediction.when.peakDay.label}</div>
-          <div className="text-xs text-muted-foreground mt-1">≈ {prediction.when.peakDay.expected} حادث في يوم الذروة</div>
+          <div className="text-xs text-muted-foreground mt-1">≈ {fmt(prediction.when.peakDay.expected)} حادث في يوم الذروة</div>
         </div>
 
         {/* WHERE */}
@@ -88,7 +120,7 @@ export default function PredictionSection({ incidents }) {
           </div>
           <div className="text-2xl font-bold">{prediction.where.governorate}</div>
           <div className="text-sm text-muted-foreground mt-1">{prediction.where.location || "-"}</div>
-          <div className="text-xs text-muted-foreground mt-2">درجة المخاطر: {prediction.where.riskScore}</div>
+          <div className="text-xs text-muted-foreground mt-2">الحصة المتوقعة من حوادث {type.id}: {pct(prediction.where.riskScore)}</div>
         </div>
 
         {/* HOW MANY */}
@@ -97,15 +129,15 @@ export default function PredictionSection({ incidents }) {
             <Users className="w-4 h-4" />
             <span>كم</span>
           </div>
-          <div className="text-2xl font-bold">{prediction.howMany.expectedTotalDetained} <span className="text-sm font-normal text-muted-foreground">معتقل متوقع</span></div>
-          <div className="text-sm text-muted-foreground mt-1">النوع: {prediction.howMany.predictedType}</div>
-          <div className="text-xs text-muted-foreground mt-2">~{prediction.howMany.expectedDetainedPerIncident} لكل حادث</div>
+          <div className="text-2xl font-bold">{fmt(prediction.howMany.expectedTotalDetained)} <span className="text-sm font-normal text-muted-foreground">معتقل متوقع</span></div>
+          <div className="text-sm text-muted-foreground mt-1">النوع: {type.id}</div>
+          <div className="text-xs text-muted-foreground mt-2">~{fmt(prediction.howMany.expectedDetainedPerIncident)} لكل حادث</div>
         </div>
       </div>
 
       {/* Daily breakdown chart */}
       <div className="rounded-xl border border-border bg-card p-4">
-        <h3 className="font-semibold mb-1">التوقع اليومي للحوادث</h3>
+        <h3 className="font-semibold mb-1">التوقع اليومي لحوادث {type.id}</h3>
         <p className="text-xs text-muted-foreground mb-3">يوم الأسبوع × الموسم الشهري × الاتجاه الأخير — اليوم الأبرز باللون البرتقالي</p>
         <div style={{ direction: "ltr", height: 260 }}>
           <ResponsiveContainer>
@@ -116,7 +148,7 @@ export default function PredictionSection({ incidents }) {
               <Tooltip />
               <Bar dataKey="expected" name="حوادث متوقعة" radius={[3, 3, 0, 0]}>
                 {dailyData.map((entry, idx) => (
-                  <Cell key={idx} fill={entry.isPeak ? "#f59e0b" : "#0f172a"} />
+                  <Cell key={idx} fill={entry.isPeak ? "#f59e0b" : type.accent} />
                 ))}
               </Bar>
             </BarChart>
@@ -132,13 +164,14 @@ export default function PredictionSection({ incidents }) {
           <ReasonRow label="المعدل والاتجاه" text={prediction.reasoning.rate} />
           <ReasonRow label="الموسمية اليومية" text={prediction.reasoning.seasonal} />
           <ReasonRow label="المخاطر المكانية" text={prediction.reasoning.spatial} />
-          <ReasonRow label="نوع الحادث" text={prediction.reasoning.typeReason} />
+          <ReasonRow label="نوع الحادث" text={`التنبؤ محسوب من سجلات ${type.id} فقط (${incidents.length} سجلاً)، بمعزل عن النوع الآخر`} />
         </div>
       </div>
 
       <LocalForecastExplanation facts={{
-        observedEvidence: buildReportEvidence(incidents, "all supplied incident types"),
+        observedEvidence: buildReportEvidence(incidents, `${type.id} incidents only`),
         forecast: "tactical event prediction",
+        incidentType: type.id,
         observationEnd: prediction.dataEndpoint.lastDateLabel,
         window: { start: prediction.forecastWindow.startLabel, end: prediction.forecastWindow.endLabel, days: prediction.forecastWindow.days },
         expectedIncidentTotal: prediction.when.totalExpectedIncidents,
@@ -147,7 +180,7 @@ export default function PredictionSection({ incidents }) {
         peakDay: { date: prediction.when.peakDay.label, expectedIncidents: prediction.when.peakDay.expected },
         expectedDetaineeTotal: prediction.howMany.expectedTotalDetained,
         expectedDetaineesPerIncident: prediction.howMany.expectedDetainedPerIncident,
-        predictedIncidentType: prediction.howMany.predictedType,
+        predictedIncidentType: type.id,
         topGovernorate: prediction.where.governorate,
         location: prediction.where.location,
         relativeRiskScore: prediction.where.riskScore,
@@ -163,13 +196,14 @@ export default function PredictionSection({ incidents }) {
 
       {/* Governorate risk ranking */}
       <div className="rounded-xl border border-border bg-card p-4">
-        <h3 className="font-semibold mb-3">ترتيب المخاطر حسب المحافظة</h3>
+        <h3 className="font-semibold mb-1">ترتيب المحافظات حسب حوادث {type.id} المتوقعة</h3>
+        <p className="text-xs text-muted-foreground mb-3">النسبة هي حصة المحافظة من حوادث {type.id} المتوقعة خلال {prediction.forecastWindow.days} يوماً، والعدد هو سجلات {type.id} السابقة في المحافظة</p>
         <div className="space-y-2">
           {prediction.where.ranking.map((r, idx) => (
             <div key={r.governorate}>
               <div className="flex justify-between text-sm mb-1">
                 <span>{idx + 1}. {r.governorate}</span>
-                <span className="text-muted-foreground">{(r.score * 100).toFixed(1)}% | {r.incidents} حادث</span>
+                <span className="text-muted-foreground">{pct(r.score)} | {r.incidents} حادث {type.id}</span>
               </div>
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div className={idx === 0 ? "h-full bg-amber-500" : "h-full bg-slate-400"} style={{ width: `${r.score * 100}%` }} />
@@ -180,6 +214,13 @@ export default function PredictionSection({ incidents }) {
       </div>
     </div>
   );
+}
+
+function fmt(value) {
+  return Number.isFinite(value) ? String(+value.toFixed(1)) : "-";
+}
+function pct(value) {
+  return Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "-";
 }
 
 function ReasonRow({ label, text }) {

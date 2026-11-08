@@ -14,7 +14,7 @@ function StatCard({ icon: Icon, label, value, sub }) {
   );
 }
 
-export default function OverviewSection({ incidents, prediction }) {
+export default function OverviewSection({ incidents }) {
   const summary = {
     total: incidents.length,
     detained: incidents.reduce((a, b) => a + (b.detained_count || 0), 0),
