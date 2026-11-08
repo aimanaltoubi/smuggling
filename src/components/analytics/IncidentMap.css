@@ -19,6 +19,15 @@
   pointer-events: none;
 }
 
+/* Governorate names sit on dense incident clusters, so they need an opaque backing. */
+.oman-offline-map .leaflet-tooltip.oman-governorate-label {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 85%);
+  box-shadow: 0 0 0 1px rgb(40 70 53 / 20%);
+  white-space: nowrap;
+}
+
 .oman-offline-map .leaflet-tooltip.oman-city-label {
   color: #374151;
   font-size: 11px;

@@ -8,6 +8,12 @@ export default function ForecastSection({ incidents }) {
 
   const smuggling = useMemo(() => incidents.filter((i) => i.incident_type === "تهريب"), [incidents]);
   const infiltration = useMemo(() => incidents.filter((i) => i.incident_type === "تسلل"), [incidents]);
+  // Dataset-wide end so every type judges final-month completeness the same way.
+  const observedThrough = useMemo(() => {
+    let end = -Infinity;
+    for (const i of incidents) { const t = Date.parse(i.incident_date); if (t > end) end = t; }
+    return Number.isFinite(end) ? new Date(end).toISOString() : null;
+  }, [incidents]);
 
   const singleSet = useMemo(() => {
     if (typeFilter === "all") return incidents;
@@ -40,13 +46,14 @@ export default function ForecastSection({ incidents }) {
 
       {view === "both" ? (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <TypeForecast incidents={smuggling} metric={metric} title="تهريب" accent="#dc2626" />
-          <TypeForecast incidents={infiltration} metric={metric} title="تسلل" accent="#2563eb" />
+          <TypeForecast incidents={smuggling} metric={metric} title="تهريب" accent="#dc2626" observedThrough={observedThrough} />
+          <TypeForecast incidents={infiltration} metric={metric} title="تسلل" accent="#2563eb" observedThrough={observedThrough} />
         </div>
       ) : (
         <TypeForecast
           incidents={singleSet}
           metric={metric}
+          observedThrough={observedThrough}
           title={typeFilter === "all" ? "جميع الحوادث" : typeFilter}
           accent={typeFilter === "تهريب" ? "#dc2626" : typeFilter === "تسلل" ? "#2563eb" : "#0f172a"}
         />

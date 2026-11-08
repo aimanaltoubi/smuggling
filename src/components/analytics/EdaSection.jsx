@@ -60,12 +60,12 @@ export default function EdaSection({ incidents }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="font-semibold mb-3">الحوادث حسب المحافظة</h3>
-          <div style={{ direction: "ltr", height: 280 }}>
+          <div style={{ direction: "ltr", height: Math.max(280, Math.min(15, eda.distributions.byGovernorate.length) * 30 + 40) }}>
             <ResponsiveContainer>
-              <BarChart data={eda.distributions.byGovernorate.slice(0, 10)} layout="vertical" margin={{ left: 20 }}>
+              <BarChart data={eda.distributions.byGovernorate.slice(0, 15)} layout="vertical" margin={{ left: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" />
-                <YAxis type="category" dataKey="key" width={80} />
+                <YAxis type="category" dataKey="key" width={120} interval={0} tick={{ fontSize: 12 }} />
                 <Tooltip />
                 <Bar dataKey="count" fill="#0f172a" radius={[0, 4, 4, 0]} />
               </BarChart>

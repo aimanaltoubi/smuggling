@@ -53,14 +53,38 @@ function aggregateByMonth(projections) {
   }));
 }
 
+// A final month observed only partway (e.g. data ending 1 September) would be
+// read as a collapse in activity, so it is withheld and forecast instead.
+export function withholdIncompleteFinalMonth(incidents, observedThrough = null) {
+  let endMs = observedThrough ? Date.parse(observedThrough) : NaN;
+  if (!Number.isFinite(endMs)) {
+    endMs = -Infinity;
+    for (const r of incidents) { const t = Date.parse(r.incident_date); if (t > endMs) endMs = t; }
+  }
+  if (!Number.isFinite(endMs)) return { incidents, observedThrough: null, partialMonth: null };
+  const end = new Date(endMs);
+  const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  if (end.getUTCDate() >= lastDay) return { incidents, observedThrough: end, partialMonth: null };
+  const cutoff = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1);
+  const complete = incidents.filter(r => Date.parse(r.incident_date) < cutoff);
+  if (!complete.length) return { incidents, observedThrough: end, partialMonth: null };
+  return {
+    incidents: complete,
+    observedThrough: end,
+    partialMonth: { period: end.toISOString().slice(0, 7), excludedRecords: incidents.length - complete.length },
+  };
+}
+
 /**
  * Strategic seasonal forecast — runs the MLOps pipeline and returns a
  * TypeForecast-compatible result: historical monthly series + multi-month
  * projection with confidence intervals.
  */
-export function pipelineStrategicForecast(incidents, opts = {}) {
-  const { target = "incidents", level = "governorate", horizon = 48, model_name = "AutoTunedModel" } = opts;
+export function pipelineStrategicForecast(allIncidents, opts = {}) {
+  const { target = "incidents", level = "governorate", horizon = 48, model_name = "AutoTunedModel", observedThrough = null } = opts;
   const pipelineTarget = target === "detained" ? "detained_count" : "incidents";
+  const coverage = withholdIncompleteFinalMonth(allIncidents, observedThrough);
+  const incidents = coverage.incidents;
 
   const result = runPipeline(incidents, {
     model_name, target: pipelineTarget, level, horizon_months: horizon,
@@ -81,6 +105,8 @@ export function pipelineStrategicForecast(incidents, opts = {}) {
     residStd: result.evaluate?.ts_metrics?.overall_rmse || 0,
     metrics: result.evaluate?.ts_metrics || {},
     reconciliation: result.forecast?.reconciliation || null,
+    observedThrough: coverage.observedThrough,
+    partialMonth: coverage.partialMonth,
     provenance: { model_name, target: pipelineTarget, level, stages: result.stages, run_id: result.run_id },
   };
 }
