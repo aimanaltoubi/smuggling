@@ -17,12 +17,15 @@ export default class AutoTunedModel {
     const target = this.targets[0], cells = panel.cells.filter(c => c.month_id < this.partition.test_start);
     const first = Math.min(...cells.map(c => c.month_id)), last = Math.max(...cells.map(c => c.month_id));
     const folds = [];
-    for (let origin = Math.max(first + 17, last - 21); origin <= last - 6; origin += 3) {
+    for (let origin = Math.max(first + 11, last - 21); origin <= last - 6; origin += 3) {
       folds.push({ origin, train: { cells: cells.filter(c => c.month_id <= origin) }, actual: cells.filter(c => c.month_id > origin && c.month_id <= origin + 6) });
     }
+    // Without folds nothing can be validated: replay last year's seasonal
+    // pattern when at least 13 months exist, otherwise hold the recent mean.
+    const fallbackId = last - first + 1 >= 13 ? 'seasonal-24' : 'recent-3';
     const ranked = CANDIDATES.map(c => {
       const maps = folds.map(f => frameMap(makeCandidate(c, target, f.origin + 1, 6, this.loa).fit(f.train).predict()[target]));
-      return { c, maps, score: folds.length ? score(folds, maps, target) : (c.id === 'recent-3' ? 0 : Infinity) };
+      return { c, maps, score: folds.length ? score(folds, maps, target) : (c.id === fallbackId ? 0 : Infinity) };
     }).sort((a, b) => a.score - b.score);
     const baseline = ranked.filter(r => ['recent-3', 'seasonal-24', 'last'].includes(r.c.id)).sort((a, b) => a.score - b.score)[0];
     const best = ranked[0], members = ranked.slice(0, 3);

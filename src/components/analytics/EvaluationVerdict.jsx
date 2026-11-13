@@ -1,5 +1,5 @@
 import React from "react";
-import { ShieldCheck, ShieldAlert, ShieldX, CheckCircle, AlertTriangle } from "lucide-react";
+import { ShieldCheck, ShieldAlert, ShieldX, AlertTriangle } from "lucide-react";
 
 function scoreColor(score) {
   if (score === "عالٍ") return { bg: "bg-green-50", border: "border-green-200", text: "text-green-700", icon: ShieldCheck, iconColor: "text-green-600" };
