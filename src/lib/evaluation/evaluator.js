@@ -1,10 +1,11 @@
 import dataAudit from '@/lib/evaluation/dataAudit';
 import monthlyBacktest from '@/lib/evaluation/monthlyBacktest';
 import tacticalBacktest from '@/lib/evaluation/tacticalBacktest';
+import assessDataSufficiency from '@/lib/evaluation/dataSufficiency';
 import { stressDatasets } from '@/lib/evaluation/stressScenarios';
 import { toMonthId } from '@/lib/pipeline/ViewsDataLoader';
 
-export async function runComprehensiveEvaluation({ incidents = [], source = 'real', onProgress = () => {} } = {}) {
+export async function runComprehensiveEvaluation({ incidents = [], source = 'real', onProgress = (_text) => {} } = {}) {
   const audit = dataAudit(incidents);
   const datasets = source === 'stress' ? stressDatasets() : [{ name: 'البيانات المحملة', records: audit.rows, observedEnd: audit.rows.length ? toMonthId(audit.rows.at(-1).incident_date) - 1 : 0 }];
   const reports = [], tactical = [];
@@ -25,10 +26,14 @@ export async function runComprehensiveEvaluation({ incidents = [], source = 'rea
   }
   const evaluated = reports.flatMap(r => r.byHorizon || []).filter(r => r.n > 0);
   const supported = evaluated.filter(r => r.evidence.supported).length;
+  // Final gate: structural completeness plus measured accuracies decide
+  // whether the data suffices for dependable forecasts (real data only).
+  onProgress('اختبارات كفاية البيانات النهائية');
+  const sufficiency = source === 'real' ? assessDataSufficiency({ rows: audit.rows, reports, observedEnd: datasets[0].observedEnd }) : null;
   const verdict = source === 'stress' ? 'اختبار اصطناعي للمتانة، لا يثبت موثوقية تشغيلية' : supported === evaluated.length && evaluated.length > 0 ? 'تفوق مدعوم على خط الأساس في النوافذ المقاسة، يحتاج تحققاً مستقبلياً' : 'الأدلة غير كافية لإثبات تفوق ثابت، لا تعتمد على التوقعات وحدها';
   const useCases = source === 'stress'
     ? [...new Map(datasets.map(dataset => [dataset.useCase, { useCase: dataset.useCase, expectedOutcome: dataset.expectedOutcome }])).values()]
     : [];
-  return { source, audit: audit.summary, reports, tactical, useCases, verdict, supported, evaluated: evaluated.length, completedAt: new Date().toISOString(), methodology: 'ضبط داخلي متحرك ثم اختبار خارجي لم يُستخدم للاختيار، آخر 6 أشهر اختبار نهائي. لا تُضبط المعلمات على نتائج الاختبار.' };
+  return { source, audit: audit.summary, reports, tactical, useCases, verdict, supported, evaluated: evaluated.length, sufficiency, completedAt: new Date().toISOString(), methodology: 'ضبط داخلي متحرك ثم اختبار خارجي لم يُستخدم للاختيار، آخر 6 أشهر اختبار نهائي. لا تُضبط المعلمات على نتائج الاختبار.' };
 }
 export const runFullEvaluation = runComprehensiveEvaluation;

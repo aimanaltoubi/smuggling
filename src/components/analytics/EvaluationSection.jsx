@@ -6,6 +6,7 @@ import EvaluationMetricsTable from '@/components/analytics/EvaluationMetricsTabl
 import EvaluationSelection from '@/components/analytics/EvaluationSelection';
 import EvaluationTactical from '@/components/analytics/EvaluationTactical';
 import EvaluationSources from '@/components/analytics/EvaluationSources';
+import DataSufficiencyPanel from '@/components/analytics/DataSufficiencyPanel';
 
 export default function EvaluationSection({ incidents = [] }) {
   const [evaluation, setEvaluation] = useState(null), [running, setRunning] = useState(false);
@@ -37,6 +38,7 @@ export default function EvaluationSection({ incidents = [] }) {
       <select aria-label="نتائج السيناريو والهدف" className="w-full rounded-lg border border-input bg-background p-3" value={selected} onChange={e => setSelected(Number(e.target.value))}>{evaluation.reports.map((r, i) => <option key={i} value={i}>{r.name} / {r.type === 'all' ? 'كلا النوعين' : r.type} / {r.target === 'incidents' ? 'الحوادث' : 'المعتقلون'}</option>)}</select>
       {report && <><EvaluationMetricsTable report={report} /><EvaluationSelection report={report} /></>}
       <EvaluationTactical results={evaluation.tactical} />
+      <DataSufficiencyPanel sufficiency={evaluation.sufficiency} />
     </>}
     <EvaluationSources />
   </div>;
